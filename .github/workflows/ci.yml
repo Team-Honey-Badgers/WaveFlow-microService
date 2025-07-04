@@ -42,7 +42,6 @@ jobs:
         AWS_REGION=${{ secrets.AWS_REGION }}
         SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
         S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
-        S3_WAVEFORM_BUCKET_NAME=${{ secrets.S3_WAVEFORM_BUCKET_NAME }}
         CELERY_BROKER_URL=sqs://
         WEBHOOK_URL=${{ secrets.WEBHOOK_URL }}
         CONCURRENCY=4

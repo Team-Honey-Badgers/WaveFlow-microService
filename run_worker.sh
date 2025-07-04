@@ -44,13 +44,23 @@ find /tmp -name "tmp*" -type f -mtime +1 -delete 2>/dev/null || true
 WORKER_NAME="${WORKER_NAME:-audio-processor-worker}"
 CONCURRENCY="${CONCURRENCY:-2}"
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
-QUEUE_NAME="${QUEUE_NAME:-audio-processing-queue}"
+
+# 동적으로 큐 이름 설정 (SQS URL에서 추출)
+if [ -n "$SQS_QUEUE_NAME" ]; then
+    QUEUE_NAME="$SQS_QUEUE_NAME"
+elif [ -n "$SQS_QUEUE_URL" ]; then
+    # SQS URL에서 큐 이름 추출
+    QUEUE_NAME=$(basename "$SQS_QUEUE_URL")
+else
+    QUEUE_NAME="${QUEUE_NAME:-audio-processing-queue}"
+fi
 
 echo "워커 설정:"
 echo "  - 워커 이름: $WORKER_NAME"
 echo "  - 동시 실행 수: $CONCURRENCY"
 echo "  - 로그 레벨: $LOG_LEVEL"
 echo "  - 큐 이름: $QUEUE_NAME"
+echo "  - SQS 큐 URL: $SQS_QUEUE_URL"
 
 # 그레이스풀 종료 핸들러
 cleanup() {

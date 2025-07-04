@@ -17,10 +17,11 @@ AWS_REGION = os.getenv('AWS_REGION', 'ap-northeast-2')
 
 # SQS 설정
 SQS_QUEUE_URL = os.getenv('SQS_QUEUE_URL', '')
+# 큐 이름을 직접 설정할 수 있도록 환경 변수 추가
+SQS_QUEUE_NAME = os.getenv('SQS_QUEUE_NAME', '')
 
-# S3 설정
+# S3 설정 - 하나의 버킷 사용
 S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', '')
-S3_WAVEFORM_BUCKET_NAME = os.getenv('S3_WAVEFORM_BUCKET_NAME', '')
 
 # Celery 설정
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'sqs://')
@@ -53,7 +54,6 @@ REQUIRED_VARS = [
     'AWS_SECRET_ACCESS_KEY',
     'SQS_QUEUE_URL',
     'S3_BUCKET_NAME',
-    'S3_WAVEFORM_BUCKET_NAME',
     'WEBHOOK_URL'
 ]
 
@@ -77,7 +77,6 @@ def get_config():
         'AWS_REGION': AWS_REGION,
         'SQS_QUEUE_URL': SQS_QUEUE_URL,
         'S3_BUCKET_NAME': S3_BUCKET_NAME,
-        'S3_WAVEFORM_BUCKET_NAME': S3_WAVEFORM_BUCKET_NAME,
         'CELERY_BROKER_URL': CELERY_BROKER_URL,
         'WEBHOOK_URL': WEBHOOK_URL,
         'ALLOWED_MIME_TYPES': ALLOWED_MIME_TYPES,
@@ -94,4 +93,22 @@ def get_result_backend_info():
         'backend_type': "Cache (웹훅 방식 사용)",
         'backend_url': CELERY_RESULT_BACKEND,
         'distributed_support': True
-    } 
+    }
+
+def get_sqs_queue_name():
+    """
+    SQS 큐 이름을 반환합니다.
+    환경 변수로 직접 설정된 경우 우선 사용하고,
+    없으면 SQS_QUEUE_URL에서 큐 이름을 추출합니다.
+    """
+    if SQS_QUEUE_NAME:
+        return SQS_QUEUE_NAME
+    
+    if SQS_QUEUE_URL:
+        # SQS URL에서 큐 이름 추출
+        # 형태: https://sqs.region.amazonaws.com/account-id/queue-name
+        parts = SQS_QUEUE_URL.split('/')
+        if len(parts) >= 2:
+            return parts[-1]  # 마지막 부분이 큐 이름
+    
+    return 'audio-processing-queue'  # 기본값 

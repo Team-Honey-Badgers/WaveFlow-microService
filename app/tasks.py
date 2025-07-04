@@ -60,7 +60,7 @@ def process_audio_file(self, job_id: str, s3_path: str, original_filename: str =
             waveform_filepath = tmp_waveform.name
             tmp_waveform.write(processor.generate_waveform_json(num_peaks))
         
-        # 5. 파형 데이터를 S3에 업로드
+        # 5. 파형 데이터를 S3에 업로드 (같은 버킷에 waveforms 폴더로)
         waveform_s3_path = f"waveforms/{waveform_filename}"
         logger.info("파형 데이터 S3 업로드 시작: %s", waveform_s3_path)
         

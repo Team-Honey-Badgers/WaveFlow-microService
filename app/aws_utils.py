@@ -23,7 +23,6 @@ class AWSUtils:
                 'AWS_SECRET_ACCESS_KEY': os.getenv('AWS_SECRET_ACCESS_KEY'),
                 'AWS_REGION': os.getenv('AWS_REGION', 'ap-northeast-2'),
                 'S3_BUCKET_NAME': os.getenv('S3_BUCKET_NAME'),
-                'S3_WAVEFORM_BUCKET_NAME': os.getenv('S3_WAVEFORM_BUCKET_NAME'),
                 'SQS_QUEUE_URL': os.getenv('SQS_QUEUE_URL')
             })()
             
@@ -72,19 +71,18 @@ class AWSUtils:
             logger.error("예상치 못한 오류 발생: %s", e)
             return False
     
-    def upload_to_s3(self, local_path: str, s3_path: str, bucket_name: str = None) -> bool:
+    def upload_to_s3(self, local_path: str, s3_path: str) -> bool:
         """
         로컬 파일을 S3에 업로드합니다.
         
         Args:
             local_path: 업로드할 로컬 파일 경로
             s3_path: S3 저장 경로
-            bucket_name: 업로드할 버킷 이름 (None일 경우 기본 버킷 사용)
             
         Returns:
             bool: 업로드 성공 여부
         """
-        bucket = bucket_name or self.config.S3_WAVEFORM_BUCKET_NAME
+        bucket = self.config.S3_BUCKET_NAME
         
         try:
             self.s3_client.upload_file(
