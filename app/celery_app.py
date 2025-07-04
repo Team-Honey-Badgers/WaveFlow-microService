@@ -24,9 +24,6 @@ os.environ.setdefault('AWS_DEFAULT_REGION', config.AWS_REGION)
 # Celery 애플리케이션 인스턴스 생성
 celery_app = Celery('audio-processor')
 
-# 동적으로 큐 이름 설정
-queue_name = config.get_sqs_queue_name()
-
 # Celery 설정
 celery_app.conf.update(
     # 브로커 설정 (AWS SQS)
@@ -39,10 +36,12 @@ celery_app.conf.update(
         'visibility_timeout': 3600,
         'polling_interval': 5,
         'predefined_queues': {
-            queue_name: {
+            'waveflow-audio-process-queue-honeybadgers': {
                 'url': config.SQS_QUEUE_URL,
             }
         },
+        'wait_time_seconds': 20,
+        'queue_name_prefix': '',
     },
 
     
