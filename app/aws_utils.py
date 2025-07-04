@@ -7,7 +7,6 @@ import json
 import logging
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
-from . import config
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +16,28 @@ class AWSUtils:
     def __init__(self):
         """AWS 클라이언트 초기화"""
         try:
+            # config 모듈 직접 import 대신 환경 변수 사용
+            import os
+            self.config = type('Config', (), {
+                'AWS_ACCESS_KEY_ID': os.getenv('AWS_ACCESS_KEY_ID'),
+                'AWS_SECRET_ACCESS_KEY': os.getenv('AWS_SECRET_ACCESS_KEY'),
+                'AWS_REGION': os.getenv('AWS_REGION', 'ap-northeast-2'),
+                'S3_BUCKET_NAME': os.getenv('S3_BUCKET_NAME'),
+                'S3_WAVEFORM_BUCKET_NAME': os.getenv('S3_WAVEFORM_BUCKET_NAME'),
+                'SQS_QUEUE_URL': os.getenv('SQS_QUEUE_URL')
+            })()
+            
             self.s3_client = boto3.client(
                 's3',
-                aws_access_key_id=config.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=config.AWS_SECRET_ACCESS_KEY,
-                region_name=config.AWS_REGION
+                aws_access_key_id=self.config.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=self.config.AWS_SECRET_ACCESS_KEY,
+                region_name=self.config.AWS_REGION
             )
             self.sqs_client = boto3.client(
                 'sqs',
-                aws_access_key_id=config.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=config.AWS_SECRET_ACCESS_KEY,
-                region_name=config.AWS_REGION
+                aws_access_key_id=self.config.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=self.config.AWS_SECRET_ACCESS_KEY,
+                region_name=self.config.AWS_REGION
             )
         except NoCredentialsError as e:
             logger.error("AWS 자격 증명을 찾을 수 없습니다: %s", e)
@@ -49,7 +59,7 @@ class AWSUtils:
         """
         try:
             self.s3_client.download_file(
-                Bucket=config.S3_BUCKET_NAME,
+                Bucket=self.config.S3_BUCKET_NAME,
                 Key=s3_path,
                 Filename=local_path
             )
@@ -74,7 +84,7 @@ class AWSUtils:
         Returns:
             bool: 업로드 성공 여부
         """
-        bucket = bucket_name or config.S3_WAVEFORM_BUCKET_NAME
+        bucket = bucket_name or self.config.S3_WAVEFORM_BUCKET_NAME
         
         try:
             self.s3_client.upload_file(

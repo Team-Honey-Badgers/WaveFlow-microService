@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     libmagic-dev \
     libsndfile1 \
     libsndfile1-dev \
+    libcurl4-openssl-dev \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
@@ -62,6 +63,7 @@ RUN chmod +x run_worker.sh run_tests.sh
 # 비권한 사용자 생성 및 전환 (보안)
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 RUN chown -R appuser:appuser /usr/src/app
+RUN mkdir -p /tmp/celery-logs && chown -R appuser:appuser /tmp/celery-logs
 USER appuser
 
 # 환경 변수 설정

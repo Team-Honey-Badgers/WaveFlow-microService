@@ -1,8 +1,9 @@
 """
 Celery 애플리케이션 설정 및 초기화 모듈
-AWS SQS를 브로커와 result backend로 사용하는 Celery 인스턴스를 생성합니다.
+AWS SQS를 브로커로 사용하는 Celery 인스턴스를 생성합니다.
 """
 
+import os
 import logging
 from celery import Celery
 from . import config
@@ -15,6 +16,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# AWS 자격 증명을 환경 변수로 설정
+os.environ.setdefault('AWS_ACCESS_KEY_ID', config.AWS_ACCESS_KEY_ID)
+os.environ.setdefault('AWS_SECRET_ACCESS_KEY', config.AWS_SECRET_ACCESS_KEY)
+os.environ.setdefault('AWS_DEFAULT_REGION', config.AWS_REGION)
+
 # Celery 애플리케이션 인스턴스 생성
 celery_app = Celery('audio-processor')
 
@@ -24,23 +30,14 @@ celery_app.conf.update(
     broker_url=config.CELERY_BROKER_URL,
     result_backend=config.CELERY_RESULT_BACKEND,
     
-    # SQS 관련 설정 (브로커와 result backend 공통)
+    # SQS 관련 설정
     broker_transport_options={
         'region': config.AWS_REGION,
-        'visibility_timeout': 3600,  # 1시간 (긴 작업을 위함)
-        'polling_interval': 5,       # 5초마다 폴링
+        'visibility_timeout': 3600,
+        'polling_interval': 5,
         'queue_name_prefix': 'waveflow-audio-',
-        # AWS 자격 증명을 환경 변수에서 직접 사용
-        'aws_access_key_id': config.AWS_ACCESS_KEY_ID,
-        'aws_secret_access_key': config.AWS_SECRET_ACCESS_KEY,
     },
-    
-    # Result Backend 전용 설정 (SQS 사용 시)
-    result_backend_transport_options={
-        'region': config.AWS_REGION,
-        'visibility_timeout': config.CELERY_RESULT_EXPIRES,
-        'polling_interval': 3,  # 결과 조회는 더 자주
-    },
+
     
     # 작업 실행 설정
     task_serializer='json',
@@ -65,10 +62,8 @@ celery_app.conf.update(
     # 결과 만료 설정
     result_expires=config.CELERY_RESULT_EXPIRES,
     
-    # 분산 환경 최적화 설정
-    task_ignore_result=False,        # 결과를 저장함 (NestJS에서 조회해야 하므로)
-    task_store_eager_result=True,    # 즉시 결과 저장
-    result_persistent=True,          # 결과를 영구 저장
+    # 웹훅 방식 사용으로 결과 저장 불필요
+    task_ignore_result=True,
     
     # 로그 설정
     worker_log_format=config.LOG_FORMAT,

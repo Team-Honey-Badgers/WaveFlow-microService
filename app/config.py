@@ -4,7 +4,7 @@
 """
 
 import os
-from urllib.parse import quote_plus
+
 from dotenv import load_dotenv
 
 # 환경 변수 로드
@@ -23,11 +23,7 @@ S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', '')
 S3_WAVEFORM_BUCKET_NAME = os.getenv('S3_WAVEFORM_BUCKET_NAME', '')
 
 # Celery 설정
-# SQS를 브로커로 사용 - 환경 변수에서 직접 설정하거나 기본값 사용
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'sqs://')
-
-# SQS 브로커 사용 시 자격 증명은 환경 변수나 IAM 역할로 처리
-# URL에 자격 증명을 포함하지 않음
 
 # Result Backend 설정 - 웹훅 방식으로 처리하므로 불필요
 CELERY_RESULT_BACKEND = 'cache'  # 기본 캐시만 사용

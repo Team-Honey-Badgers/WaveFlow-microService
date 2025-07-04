@@ -34,8 +34,9 @@ echo "✅ 환경 변수 확인 완료"
 # Python 경로 설정
 export PYTHONPATH="${PYTHONPATH}:/usr/src/app"
 
-# 로그 디렉토리 생성
+# 로그 디렉토리 생성 및 권한 설정
 mkdir -p /tmp/celery-logs
+chmod 755 /tmp/celery-logs
 
 # 임시 파일 정리 (시작 시)
 echo "임시 파일 정리 중..."
