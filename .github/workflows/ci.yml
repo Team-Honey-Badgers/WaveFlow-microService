@@ -30,7 +30,7 @@ jobs:
         echo "Commit: ${{ github.sha }}"
         echo "================================"
         
-        cd /home/ubuntu/audio-processor
+        cd /home/ubuntu/microService-python
 
         echo "📥 코드 업데이트..."
         git pull origin ci-cd-test || echo "Git pull failed, continuing..."
