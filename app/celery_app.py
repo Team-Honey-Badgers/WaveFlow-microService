@@ -69,7 +69,6 @@ celery_app.conf.update(
     # 워커 설정
     worker_prefetch_multiplier=1,    # 한 번에 하나의 작업만 처리
     worker_max_tasks_per_child=1000, # 메모리 누수 방지
-    worker_disable_rate_limits=True,
     
     # 결과 만료 설정
     result_expires=config.CELERY_RESULT_EXPIRES,
