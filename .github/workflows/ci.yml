@@ -73,7 +73,7 @@ jobs:
       if: success()
       run: |
         curl -X POST -H 'Content-type: application/json' --data '{
-          "text": "🧪 오디오 분석 서버 배포 성공!\n📋 Branch: `ci-cd-test`\n👤 Author: `${{ github.actor }}`\n🔗 Backend: http://${{ secrets.EC2_HOST }}:8080\n🔗 Frontend: http://${{ secrets.EC2_HOST }}:3000\n💡 팀원들은 이제 서버에서 테스트 가능합니다!"
+          "text": " 🎹 오디오 분석 서버 배포 성공일껄 ? \n 📋 Branch: `ci-cd-test`\n👤 Author: `${{ github.actor }}`\n 💡 로그 확인하고 팀원들과 내용 공유 하세요."
         }' ${{ secrets.SLACK_WEBHOOK_URL }}
     - name: Notify Team on Failure
       if: failure()
