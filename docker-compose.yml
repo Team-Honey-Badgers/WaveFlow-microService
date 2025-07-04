@@ -7,8 +7,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    volumes:
-      - ./logs:/tmp/celery-logs
+    # 로그는 docker logs로 확인
     healthcheck:
       test: ["CMD", "python", "-c", "from app.celery_app import celery_app; print('OK')"]
       interval: 30s

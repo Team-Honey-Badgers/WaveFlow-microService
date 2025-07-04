@@ -63,7 +63,7 @@ RUN chmod +x run_worker.sh run_tests.sh
 # 비권한 사용자 생성 및 전환 (보안)
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 RUN chown -R appuser:appuser /usr/src/app
-RUN mkdir -p /tmp/celery-logs && chown -R appuser:appuser /tmp/celery-logs
+# 로그는 stdout으로 출력
 USER appuser
 
 # 환경 변수 설정

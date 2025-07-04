@@ -34,9 +34,7 @@ echo "✅ 환경 변수 확인 완료"
 # Python 경로 설정
 export PYTHONPATH="${PYTHONPATH}:/usr/src/app"
 
-# 로그 디렉토리 생성 및 권한 설정
-mkdir -p /tmp/celery-logs
-chmod 755 /tmp/celery-logs
+# 로그는 stdout으로 출력 (Docker 로그로 수집)
 
 # 임시 파일 정리 (시작 시)
 echo "임시 파일 정리 중..."
@@ -100,8 +98,6 @@ celery -A app.celery_app worker \
     --concurrency="$CONCURRENCY" \
     --hostname="$WORKER_NAME@%h" \
     --queues="$QUEUE_NAME" \
-    --logfile="/tmp/celery-logs/worker.log" \
-    --pidfile="/tmp/celery-worker.pid" \
     --without-gossip \
     --without-mingle \
     --without-heartbeat \
