@@ -43,7 +43,7 @@ jobs:
         SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
         S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
         S3_WAVEFORM_BUCKET_NAME=${{ secrets.S3_WAVEFORM_BUCKET_NAME }}
-        CELERY_BROKER_URL=sqs://${{ secrets.AWS_ACCESS_KEY_ID }}:${{ secrets.AWS_SECRET_ACCESS_KEY }}@${{ secrets.SQS_QUEUE_URL }}
+        CELERY_BROKER_URL=sqs://
         WEBHOOK_URL=${{ secrets.WEBHOOK_URL }}
         CONCURRENCY=4
         LOG_LEVEL=INFO
