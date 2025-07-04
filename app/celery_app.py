@@ -42,7 +42,13 @@ celery_app.conf.update(
         },
         'wait_time_seconds': 20,
         'queue_name_prefix': '',
+        'is_secure': True,
     },
+    
+    # 추가 설정
+    worker_disable_rate_limits=True,
+    task_always_eager=False,
+    task_eager_propagates=True,
 
     
     # 작업 실행 설정
