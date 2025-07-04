@@ -26,7 +26,7 @@ S3_WAVEFORM_BUCKET_NAME = os.getenv('S3_WAVEFORM_BUCKET_NAME', '')
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'sqs://')
 
 # Result Backend 설정 - 웹훅 방식으로 처리하므로 불필요
-CELERY_RESULT_BACKEND = 'cache'  # 기본 캐시만 사용
+CELERY_RESULT_BACKEND = 'cache+memory://'
 
 # 파일 처리 설정
 ALLOWED_MIME_TYPES = os.getenv('ALLOWED_MIME_TYPES', 'audio/wav,audio/mpeg,audio/mp3,audio/flac,audio/ogg').split(',')
