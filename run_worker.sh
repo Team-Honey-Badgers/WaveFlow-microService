@@ -17,9 +17,9 @@ if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
     exit 1
 fi
 
-if [ -z "$SQS_QUEUE_URL" ] || [ -z "$SQS_RESULT_QUEUE_URL" ]; then
+if [ -z "$SQS_QUEUE_URL" ]; then
     echo "❌ 필수 SQS 큐 URL이 설정되지 않았습니다."
-    echo "   SQS_QUEUE_URL과 SQS_RESULT_QUEUE_URL을 설정해주세요."
+    echo "   SQS_QUEUE_URL을 설정해주세요."
     exit 1
 fi
 
