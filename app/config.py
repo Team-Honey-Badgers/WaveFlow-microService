@@ -4,6 +4,7 @@
 """
 
 import os
+from urllib.parse import quote_plus
 from dotenv import load_dotenv
 
 # 환경 변수 로드
@@ -25,7 +26,10 @@ S3_WAVEFORM_BUCKET_NAME = os.getenv('S3_WAVEFORM_BUCKET_NAME', '')
 # SQS를 브로커로 사용하는 URL 생성
 CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', '')
 if not CELERY_BROKER_URL and AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
-    CELERY_BROKER_URL = f'sqs://{AWS_ACCESS_KEY_ID}:{AWS_SECRET_ACCESS_KEY}@'
+    # AWS 자격 증명을 URL 인코딩하여 특수문자 처리
+    encoded_access_key = quote_plus(AWS_ACCESS_KEY_ID)
+    encoded_secret_key = quote_plus(AWS_SECRET_ACCESS_KEY)
+    CELERY_BROKER_URL = f'sqs://{encoded_access_key}:{encoded_secret_key}@'
 
 # Result Backend 설정 - 웹훅 방식으로 처리하므로 불필요
 CELERY_RESULT_BACKEND = 'cache'  # 기본 캐시만 사용
