@@ -69,9 +69,15 @@ jobs:
         scp -o StrictHostKeyChecking=no deploy.sh ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/deploy.sh
         ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} "chmod +x /home/ubuntu/deploy.sh && /home/ubuntu/deploy.sh"
 
-    - name: Success Notification
+    - name: Notify Team on Success
       if: success()
       run: |
-        echo "🎉 오디오 처리 워커 배포 성공!"
-        echo "📋 Branch: ci-cd-test"
-        echo "👤 Author: ${{ github.actor }}"
+        curl -X POST -H 'Content-type: application/json' --data '{
+          "text": "🧪 오디오 분석 서버 배포 성공!\n📋 Branch: `ci-cd-test`\n👤 Author: `${{ github.actor }}`\n🔗 Backend: http://${{ secrets.EC2_HOST }}:8080\n🔗 Frontend: http://${{ secrets.EC2_HOST }}:3000\n💡 팀원들은 이제 서버에서 테스트 가능합니다!"
+        }' ${{ secrets.SLACK_WEBHOOK_URL }}
+    - name: Notify Team on Failure
+      if: failure()
+      run: |
+        curl -X POST -H 'Content-type: application/json' --data '{
+          "text": "❌ 오디오 분석 배포 실패\n📋 Branch: `ci-cd-test`\n👤 Author: `${{ github.actor }}`\n🔍 GitHub Actions에서 로그를 확인해주세요."
+        }' ${{ secrets.SLACK_WEBHOOK_URL }}
