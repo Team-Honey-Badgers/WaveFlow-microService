@@ -30,6 +30,9 @@ celery_app.conf.update(
         'visibility_timeout': 3600,  # 1시간 (긴 작업을 위함)
         'polling_interval': 5,       # 5초마다 폴링
         'queue_name_prefix': 'waveflow-audio-',
+        # AWS 자격 증명을 환경 변수에서 직접 사용
+        'aws_access_key_id': config.AWS_ACCESS_KEY_ID,
+        'aws_secret_access_key': config.AWS_SECRET_ACCESS_KEY,
     },
     
     # Result Backend 전용 설정 (SQS 사용 시)
@@ -81,7 +84,7 @@ try:
     result_backend_info = config.get_result_backend_info()
     
     logger.info("Celery 애플리케이션 설정 완료")
-    logger.info("브로커: %s", config.CELERY_BROKER_URL.split('@')[0] + '@***')
+    logger.info("브로커: %s", config.CELERY_BROKER_URL)
     logger.info("Result Backend: %s (%s)", 
                result_backend_info['backend_type'], 
                '분산 지원' if result_backend_info['distributed_support'] else '로컬 전용')
