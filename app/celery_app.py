@@ -35,7 +35,11 @@ celery_app.conf.update(
         'region': config.AWS_REGION,
         'visibility_timeout': 3600,
         'polling_interval': 5,
-        'queue_name_prefix': 'waveflow-audio-',
+        'predefined_queues': {
+            'audio-processing-queue': {
+                'url': config.SQS_QUEUE_URL,
+            }
+        },
     },
 
     
