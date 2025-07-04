@@ -23,9 +23,9 @@ if [ -z "$SQS_QUEUE_URL" ]; then
     exit 1
 fi
 
-if [ -z "$S3_BUCKET_NAME" ] || [ -z "$S3_WAVEFORM_BUCKET_NAME" ]; then
+if [ -z "$S3_BUCKET_NAME" ]; then
     echo "❌ 필수 S3 버킷이 설정되지 않았습니다."
-    echo "   S3_BUCKET_NAME과 S3_WAVEFORM_BUCKET_NAME을 설정해주세요."
+    echo "   S3_BUCKET_NAME을 설정해주세요."
     exit 1
 fi
 
