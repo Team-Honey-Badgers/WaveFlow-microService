@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  audio-processor:
+    build: .
+    container_name: audio-processor-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/tmp/celery-logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.celery_app import celery_app; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

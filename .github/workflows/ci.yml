@@ -1,0 +1,77 @@
+name: Deploy Audio Processor
+
+on:
+  push:
+    branches:
+      - ci-cd-test
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Deploy to EC2
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+        cat > deploy.sh << 'EOF'
+        #!/bin/bash
+        set -e
+
+        echo "🎵 오디오 처리 워커 배포 시작..."
+        echo "Branch: ci-cd-test"
+        echo "Commit: ${{ github.sha }}"
+        echo "================================"
+        
+        cd /home/ubuntu/audio-processor
+
+        echo "📥 코드 업데이트..."
+        git pull origin ci-cd-test || echo "Git pull failed, continuing..."
+
+        echo "📝 환경변수 설정..."
+        cat > .env << 'ENVEOF'
+        AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_REGION=${{ secrets.AWS_REGION }}
+        SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
+        S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
+        S3_WAVEFORM_BUCKET_NAME=${{ secrets.S3_WAVEFORM_BUCKET_NAME }}
+        CELERY_BROKER_URL=sqs://${{ secrets.AWS_ACCESS_KEY_ID }}:${{ secrets.AWS_SECRET_ACCESS_KEY }}@${{ secrets.SQS_QUEUE_URL }}
+        WEBHOOK_URL=${{ secrets.WEBHOOK_URL }}
+        CONCURRENCY=4
+        LOG_LEVEL=INFO
+        ENVEOF
+
+        echo "🔨 Docker 배포..."
+        sudo docker-compose down || true
+        sudo docker-compose build --no-cache
+        sudo docker-compose up -d
+
+        echo "⏳ 서비스 시작 대기..."
+        sleep 20
+
+        echo "=== 컨테이너 상태 ==="
+        sudo docker-compose ps
+
+        echo "=== 워커 로그 ==="
+        sudo docker-compose logs --tail=30 audio-processor
+
+        echo "✅ 배포 완료!"
+        EOF
+
+        scp -o StrictHostKeyChecking=no deploy.sh ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/deploy.sh
+        ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} "chmod +x /home/ubuntu/deploy.sh && /home/ubuntu/deploy.sh"
+
+    - name: Success Notification
+      if: success()
+      run: |
+        echo "🎉 오디오 처리 워커 배포 성공!"
+        echo "📋 Branch: ci-cd-test"
+        echo "👤 Author: ${{ github.actor }}"
