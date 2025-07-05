@@ -69,16 +69,20 @@ celery_app.conf.update(
     timezone='UTC',
     enable_utc=True,
     
-    # 메시지 프로토콜 설정 (Protocol 1 - 안정적)
-    task_protocol=1,
+    # 메시지 프로토콜 설정 (Protocol 2 - 호환성)
+    task_protocol=2,
     
     # 메시지 압축 완전 비활성화
     task_compression=None,
     result_compression=None,
     
-    # 작업 신뢰성 설정 - 더 관대하게
+    # 작업 신뢰성 설정
     task_acks_late=True,
     task_reject_on_worker_lost=False,
+    
+    # 메시지 형식 처리 설정
+    task_always_eager=False,
+    worker_disable_rate_limits=True,
     
     # 재시도 설정
     task_default_retry_delay=config.RETRY_DELAY,
