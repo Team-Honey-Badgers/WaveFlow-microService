@@ -10,9 +10,7 @@ from dotenv import load_dotenv
 # 환경 변수 로드
 load_dotenv()
 
-# AWS 설정
-AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
-AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
+# AWS 설정 - EC2 IAM Role 사용
 AWS_REGION = os.getenv('AWS_REGION', 'ap-northeast-2')
 
 # SQS 설정
@@ -48,10 +46,8 @@ WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
 # 결과 저장 만료 시간 (초) - SQS 메시지 가시성 타임아웃 고려
 CELERY_RESULT_EXPIRES = int(os.getenv('CELERY_RESULT_EXPIRES', '3600'))  # 1시간
 
-# 필수 환경 변수 검증
+# 필수 환경 변수 검증 - EC2 IAM Role 사용으로 자격 증명 불필요
 REQUIRED_VARS = [
-    'AWS_ACCESS_KEY_ID',
-    'AWS_SECRET_ACCESS_KEY',
     'SQS_QUEUE_URL',
     'S3_BUCKET_NAME',
     'WEBHOOK_URL'
@@ -72,8 +68,6 @@ def validate_config():
 def get_config():
     """전체 설정을 딕셔너리로 반환합니다."""
     return {
-        'AWS_ACCESS_KEY_ID': AWS_ACCESS_KEY_ID,
-        'AWS_SECRET_ACCESS_KEY': AWS_SECRET_ACCESS_KEY,
         'AWS_REGION': AWS_REGION,
         'SQS_QUEUE_URL': SQS_QUEUE_URL,
         'S3_BUCKET_NAME': S3_BUCKET_NAME,

@@ -11,11 +11,8 @@ echo "======================================"
 
 # 환경 변수 확인
 echo "환경 변수 확인 중..."
-if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-    echo "❌ 필수 AWS 자격 증명이 설정되지 않았습니다."
-    echo "   AWS_ACCESS_KEY_ID와 AWS_SECRET_ACCESS_KEY를 설정해주세요."
-    exit 1
-fi
+# EC2 IAM Role 사용으로 AWS 자격 증명 환경변수 검증 불필요
+echo "ℹ️  EC2 IAM Role을 사용하여 AWS 서비스에 접근합니다."
 
 if [ -z "$SQS_QUEUE_URL" ]; then
     echo "❌ 필수 SQS 큐 URL이 설정되지 않았습니다."

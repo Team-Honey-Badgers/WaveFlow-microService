@@ -16,26 +16,21 @@ class AWSUtils:
     def __init__(self):
         """AWS 클라이언트 초기화"""
         try:
-            # config 모듈 직접 import 대신 환경 변수 사용
+            # EC2 IAM Role 사용 - 자격 증명 직접 전달하지 않음
             import os
             self.config = type('Config', (), {
-                'AWS_ACCESS_KEY_ID': os.getenv('AWS_ACCESS_KEY_ID'),
-                'AWS_SECRET_ACCESS_KEY': os.getenv('AWS_SECRET_ACCESS_KEY'),
                 'AWS_REGION': os.getenv('AWS_REGION', 'ap-northeast-2'),
                 'S3_BUCKET_NAME': os.getenv('S3_BUCKET_NAME'),
                 'SQS_QUEUE_URL': os.getenv('SQS_QUEUE_URL')
             })()
             
+            # EC2 IAM Role을 사용하여 자동으로 자격 증명 획득
             self.s3_client = boto3.client(
                 's3',
-                aws_access_key_id=self.config.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=self.config.AWS_SECRET_ACCESS_KEY,
                 region_name=self.config.AWS_REGION
             )
             self.sqs_client = boto3.client(
                 'sqs',
-                aws_access_key_id=self.config.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=self.config.AWS_SECRET_ACCESS_KEY,
                 region_name=self.config.AWS_REGION
             )
         except NoCredentialsError as e:

@@ -16,9 +16,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# AWS 자격 증명을 환경 변수로 설정
-os.environ.setdefault('AWS_ACCESS_KEY_ID', config.AWS_ACCESS_KEY_ID)
-os.environ.setdefault('AWS_SECRET_ACCESS_KEY', config.AWS_SECRET_ACCESS_KEY)
+# EC2 IAM Role 사용 - 자격 증명을 환경변수로 설정하지 않음
+# EC2 인스턴스 메타데이터에서 자동으로 IAM Role 자격 증명 사용
 os.environ.setdefault('AWS_DEFAULT_REGION', config.AWS_REGION)
 
 # Celery 애플리케이션 인스턴스 생성

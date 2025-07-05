@@ -35,10 +35,8 @@ jobs:
         echo "📥 코드 업데이트..."
         git pull origin ci-cd-test || echo "Git pull failed, continuing..."
 
-        echo "📝 환경변수 설정..."
+        echo "📝 환경변수 설정... (EC2 IAM Role 사용)"
         cat > .env << 'ENVEOF'
-        AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_REGION=${{ secrets.AWS_REGION }}
         SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
         S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
