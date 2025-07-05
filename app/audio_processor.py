@@ -117,24 +117,110 @@ class AudioProcessor:
             Tuple[np.ndarray, int]: (오디오 데이터, 샘플 레이트)
         """
         try:
-            # librosa 캐싱 완전 비활성화
+            logger.info("오디오 파일 로드 시작: %s", self.filepath)
+            
+            # 대안 1: soundfile 직접 사용 (더 안전함)
+            try:
+                import soundfile as sf
+                logger.info("soundfile 라이브러리 사용하여 로드 시도")
+                
+                # soundfile로 로드
+                self.audio_data, self.sample_rate = sf.read(self.filepath)
+                
+                # 스테레오를 모노로 변환 (필요시)
+                if len(self.audio_data.shape) > 1:
+                    self.audio_data = np.mean(self.audio_data, axis=1)
+                
+                logger.info("soundfile로 오디오 데이터 로드 완료: 샘플 레이트=%d, 길이=%d", 
+                           self.sample_rate, len(self.audio_data))
+                
+                return self.audio_data, self.sample_rate
+                
+            except ImportError:
+                logger.warning("soundfile 라이브러리가 없습니다. librosa 사용")
+            except Exception as sf_error:
+                logger.warning("soundfile로 로드 실패, librosa 시도: %s", sf_error)
+            
+            # 대안 2: librosa 안전 모드 사용
+            logger.info("librosa 안전 모드로 로드 시도")
+            
+            # numba 캐싱 완전 비활성화 (전역 설정)
             import os
             os.environ['LIBROSA_CACHE_DIR'] = '/tmp'
             os.environ['LIBROSA_CACHE_LEVEL'] = '0'
             os.environ['NUMBA_CACHE_DIR'] = '/tmp'
             os.environ['NUMBA_DISABLE_JIT'] = '1'
+            os.environ['NUMBA_DISABLE_CUDA'] = '1'
             
-            # librosa를 사용하여 오디오 파일 로드
-            # sr=None으로 설정하여 원본 샘플 레이트 유지
-            self.audio_data, self.sample_rate = librosa.load(self.filepath, sr=None)
+            # librosa 재import (환경 변수 적용)
+            import importlib
+            importlib.reload(librosa)
             
-            logger.info("오디오 데이터 로드 완료: 샘플 레이트=%d, 길이=%d", 
+            # librosa로 로드 (안전 모드)
+            self.audio_data, self.sample_rate = librosa.load(
+                self.filepath, 
+                sr=None,  # 원본 샘플 레이트 유지
+                mono=True,  # 모노로 변환
+                res_type='kaiser_fast'  # 빠른 리샘플링
+            )
+            
+            logger.info("librosa로 오디오 데이터 로드 완료: 샘플 레이트=%d, 길이=%d", 
                        self.sample_rate, len(self.audio_data))
             
             return self.audio_data, self.sample_rate
+            
         except Exception as e:
             logger.error("오디오 데이터 로드 실패: %s", e)
-            raise
+            logger.error("오류 타입: %s", type(e).__name__)
+            
+            # 대안 3: 기본 파일 읽기로 폴백 (WAV 파일의 경우)
+            try:
+                logger.info("기본 WAV 파일 읽기 시도")
+                
+                # WAV 파일인지 확인
+                if self.filepath.lower().endswith('.wav'):
+                    import wave
+                    
+                    with wave.open(self.filepath, 'rb') as wav_file:
+                        frames = wav_file.readframes(-1)
+                        self.sample_rate = wav_file.getframerate()
+                        channels = wav_file.getnchannels()
+                        sample_width = wav_file.getsampwidth()
+                        
+                        # 바이트 데이터를 numpy 배열로 변환
+                        if sample_width == 1:
+                            dtype = np.uint8
+                        elif sample_width == 2:
+                            dtype = np.int16
+                        elif sample_width == 4:
+                            dtype = np.int32
+                        else:
+                            raise ValueError(f"지원하지 않는 샘플 폭: {sample_width}")
+                        
+                        audio_array = np.frombuffer(frames, dtype=dtype)
+                        
+                        # 스테레오를 모노로 변환
+                        if channels == 2:
+                            audio_array = audio_array.reshape(-1, 2)
+                            audio_array = np.mean(audio_array, axis=1)
+                        
+                        # float32로 정규화
+                        if dtype == np.uint8:
+                            self.audio_data = (audio_array.astype(np.float32) - 128) / 128.0
+                        else:
+                            max_val = np.iinfo(dtype).max
+                            self.audio_data = audio_array.astype(np.float32) / max_val
+                        
+                        logger.info("기본 WAV 읽기로 로드 완료: 샘플 레이트=%d, 길이=%d", 
+                                   self.sample_rate, len(self.audio_data))
+                        
+                        return self.audio_data, self.sample_rate
+                
+            except Exception as wav_error:
+                logger.error("기본 WAV 읽기도 실패: %s", wav_error)
+            
+            # 모든 방법이 실패한 경우
+            raise Exception(f"모든 오디오 로드 방법이 실패했습니다. 원본 오류: {e}")
     
     def get_audio_duration(self) -> float:
         """

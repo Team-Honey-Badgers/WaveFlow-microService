@@ -9,6 +9,15 @@ from celery import Celery
 from celery.signals import task_prerun, task_failure, task_retry, task_success
 from . import config
 
+# numba/librosa 캐싱 완전 비활성화 (전역 설정)
+os.environ['LIBROSA_CACHE_DIR'] = '/tmp'
+os.environ['LIBROSA_CACHE_LEVEL'] = '0'
+os.environ['NUMBA_CACHE_DIR'] = '/tmp'
+os.environ['NUMBA_DISABLE_JIT'] = '1'
+os.environ['NUMBA_DISABLE_CUDA'] = '1'
+os.environ['NUMBA_DISABLE_OPENMP'] = '1'
+os.environ['OMP_NUM_THREADS'] = '1'
+
 # 로깅 설정
 logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL),
