@@ -6,6 +6,7 @@ AWS SQS를 브로커로 사용하는 Celery 인스턴스를 생성합니다.
 import os
 import logging
 from celery import Celery
+from celery.signals import task_prerun, task_failure, task_retry, task_success
 from . import config
 
 # 로깅 설정
@@ -22,6 +23,24 @@ os.environ.setdefault('AWS_DEFAULT_REGION', config.AWS_REGION)
 
 # Celery 애플리케이션 인스턴스 생성
 celery_app = Celery('audio-processor')
+
+# 커스텀 메시지 처리 신호 핸들러
+@task_prerun.connect
+def task_prerun_handler(sender=None, task_id=None, task=None, args=None, kwargs=None, **kwds):
+    """태스크 실행 전 호출되는 핸들러"""
+    logger.info(f"태스크 시작: {task.name} (ID: {task_id})")
+    logger.info(f"Args: {args}, Kwargs: {kwargs}")
+
+@task_failure.connect
+def task_failure_handler(sender=None, task_id=None, exception=None, traceback=None, einfo=None, **kwds):
+    """태스크 실패 시 호출되는 핸들러"""
+    logger.error(f"태스크 실패: {sender.name} (ID: {task_id})")
+    logger.error(f"Exception: {exception}")
+
+@task_success.connect
+def task_success_handler(sender=None, result=None, **kwds):
+    """태스크 성공 시 호출되는 핸들러"""
+    logger.info(f"태스크 성공: {sender.name}")
 
 # Celery 설정
 celery_app.conf.update(
@@ -43,21 +62,21 @@ celery_app.conf.update(
         'queue_name_prefix': '',
     },
     
-    # 작업 실행 설정 - 직접 JSON 메시지 처리
+    # 작업 실행 설정 - Celery 5.3.4 호환
     task_serializer='json',
-    accept_content=['json', 'pickle', 'application/json'],
+    accept_content=['json'],  # 더 제한적으로 json만 허용
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
     
-    # 메시지 프로토콜 설정 (Protocol 1 - 가장 안정적)
+    # 메시지 프로토콜 설정 (Protocol 1 - 안정적)
     task_protocol=1,
     
-    # 메시지 압축 비활성화
+    # 메시지 압축 완전 비활성화
     task_compression=None,
     result_compression=None,
     
-    # 작업 신뢰성 설정
+    # 작업 신뢰성 설정 - 더 관대하게
     task_acks_late=True,
     task_reject_on_worker_lost=False,
     
@@ -80,7 +99,7 @@ celery_app.conf.update(
     worker_log_format=config.LOG_FORMAT,
     worker_task_log_format=config.LOG_FORMAT,
     
-    # 호환성 설정
+    # 호환성 설정 - Celery 5.3.4 특화
     task_send_sent_event=False,
     task_track_started=False,
     
@@ -103,12 +122,28 @@ celery_app.conf.update(
     # 더 관대한 메시지 처리
     worker_lost_wait=10.0,
     
+    # 오류 처리 설정
+    task_soft_time_limit=None,
+    task_time_limit=None,
+    
     # JSON 메시지 직접 처리 허용
     task_routes={
         'app.tasks.process_audio_file': {
             'queue': 'waveflow-audio-process-queue-honeybadgers'
         }
     },
+    
+    # Celery 5.3.4 호환성 설정
+    worker_pool_restarts=True,
+    worker_autoscaler='celery.worker.autoscale:Autoscaler',
+    
+    # 메시지 직렬화 오류 처리
+    task_reject_on_worker_lost=False,
+    worker_send_task_events=False,
+    
+    # kombu 메시지 처리 설정
+    broker_heartbeat=None,
+    broker_heartbeat_checkrate=2.0,
 )
 
 # 작업 모듈 자동 검색 설정
