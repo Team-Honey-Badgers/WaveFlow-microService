@@ -41,15 +41,21 @@ celery_app.conf.update(
         },
         'wait_time_seconds': 20,
         'queue_name_prefix': '',
-        'is_secure': True,
     },
     
     # 작업 실행 설정
     task_serializer='json',
-    accept_content=['json'],
+    accept_content=['json', 'application/json'],
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
+    
+    # 메시지 라우팅 설정
+    task_routes={
+        'app.tasks.process_audio_file': {
+            'queue': 'waveflow-audio-process-queue-honeybadgers'
+        }
+    },
     
     # 작업 신뢰성 설정
     task_acks_late=True,
