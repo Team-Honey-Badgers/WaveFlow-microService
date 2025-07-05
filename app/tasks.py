@@ -16,16 +16,23 @@ from .aws_utils import aws_utils
 logger = logging.getLogger(__name__)
 
 @celery_app.task(name='process_audio_file', bind=True)
-def process_audio_file(self, job_id: str, s3_path: str, original_filename: str = None, 
+def process_audio_file(self, userId: str = None, trackId: str = None, filepath: str = None, 
+                      stemId: str = None, timestamp: str = None, 
+                      job_id: str = None, s3_path: str = None, original_filename: str = None, 
                       num_peaks: int = None):
     """
     오디오 파일 처리 메인 태스크
     
     Args:
-        job_id: 작업 고유 ID
-        s3_path: S3에 저장된 오디오 파일 경로
-        original_filename: 원본 파일명
-        num_peaks: 생성할 파형 피크 개수
+        userId: 사용자 ID
+        trackId: 트랙 ID  
+        filepath: S3 파일 경로
+        stemId: 스템 ID
+        timestamp: 타임스탬프
+        job_id: 작업 고유 ID (선택)
+        s3_path: S3 경로 (선택)
+        original_filename: 원본 파일명 (선택)
+        num_peaks: 생성할 파형 피크 개수 (선택)
         
     Returns:
         dict: 처리 결과
@@ -34,9 +41,13 @@ def process_audio_file(self, job_id: str, s3_path: str, original_filename: str =
     local_filepath = None
     waveform_filepath = None
     
+    # 파라미터 정리
+    job_id = job_id or stemId or task_id
+    s3_path = s3_path or filepath
+    
     try:
-        logger.info("오디오 파일 처리 시작: job_id=%s, task_id=%s, s3_path=%s", 
-                   job_id, task_id, s3_path)
+        logger.info("오디오 파일 처리 시작: userId=%s, trackId=%s, stemId=%s, filepath=%s", 
+                   userId, trackId, stemId, filepath)
         
         # 1. 임시 파일 생성
         with tempfile.NamedTemporaryFile(delete=False, suffix='.audio') as tmp_file:
