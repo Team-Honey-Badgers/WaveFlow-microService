@@ -138,7 +138,6 @@ celery_app.conf.update(
     worker_autoscaler='celery.worker.autoscale:Autoscaler',
     
     # 메시지 직렬화 오류 처리
-    task_reject_on_worker_lost=False,
     worker_send_task_events=False,
     
     # kombu 메시지 처리 설정
