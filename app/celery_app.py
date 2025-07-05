@@ -45,17 +45,13 @@ celery_app.conf.update(
     
     # 작업 실행 설정
     task_serializer='json',
-    accept_content=['json', 'application/json'],
+    accept_content=['json'],
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
     
-    # 메시지 라우팅 설정
-    task_routes={
-        'app.tasks.process_audio_file': {
-            'queue': 'waveflow-audio-process-queue-honeybadgers'
-        }
-    },
+    # 메시지 프로토콜 설정 (Protocol 1 사용 - 더 안정적)
+    task_protocol=1,
     
     # 작업 신뢰성 설정
     task_acks_late=True,
@@ -79,6 +75,19 @@ celery_app.conf.update(
     # 로그 설정
     worker_log_format=config.LOG_FORMAT,
     worker_task_log_format=config.LOG_FORMAT,
+    
+    # 호환성 설정
+    task_send_sent_event=False,
+    task_track_started=False,
+    
+    # 워커 설정
+    worker_hijack_root_logger=False,
+    worker_log_color=False,
+    
+    # 브로커 연결 재시도 설정
+    broker_connection_retry_on_startup=True,
+    broker_connection_retry=True,
+    broker_connection_max_retries=10,
 )
 
 # 작업 모듈 자동 검색 설정
