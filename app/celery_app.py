@@ -44,12 +44,6 @@ celery_app.conf.update(
         'is_secure': True,
     },
     
-    # 추가 설정
-    worker_disable_rate_limits=True,
-    task_always_eager=False,
-    task_eager_propagates=True,
-
-    
     # 작업 실행 설정
     task_serializer='json',
     accept_content=['json'],
@@ -58,16 +52,17 @@ celery_app.conf.update(
     enable_utc=True,
     
     # 작업 신뢰성 설정
-    task_acks_late=True,            # 작업 완료 후 ACK (실패 시 재시도 가능)
-    task_reject_on_worker_lost=True, # 워커 손실 시 작업 거부
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
     
     # 재시도 설정
     task_default_retry_delay=config.RETRY_DELAY,
     task_max_retries=config.MAX_RETRIES,
     
     # 워커 설정
-    worker_prefetch_multiplier=1,    # 한 번에 하나의 작업만 처리
-    worker_max_tasks_per_child=1000, # 메모리 누수 방지
+    worker_prefetch_multiplier=1,
+    worker_max_tasks_per_child=1000,
+    worker_disable_rate_limits=True,
     
     # 결과 만료 설정
     result_expires=config.CELERY_RESULT_EXPIRES,
@@ -85,59 +80,6 @@ celery_app.autodiscover_tasks(['app'])
 
 # 태스크 등록 확인
 logger.info("등록된 태스크 목록: %s", list(celery_app.tasks.keys()))
-
-# 커스텀 메시지 핸들러 등록
-from celery.signals import worker_ready
-from kombu import Consumer
-import json
-import threading
-
-@worker_ready.connect
-def setup_custom_consumer(sender=None, **kwargs):
-    """Celery 워커 시작 시 커스텀 컨슈머 시작"""
-    def consume_custom_messages():
-        with celery_app.connection() as conn:
-            def process_message(body, message):
-                try:
-                    if isinstance(body, str):
-                        data = json.loads(body)
-                    else:
-                        data = body
-                    
-                    # 원본 메시지 형식 감지
-                    if 'userId' in data and 'filepath' in data:
-                        logger.info("커스텀 메시지 처리: %s", data)
-                        
-                        # process_audio_file 태스크 직접 실행
-                        from .tasks import process_audio_file
-                        process_audio_file.delay(**data)
-                        
-                        message.ack()
-                        return
-                    
-                    # 일반 Celery 메시지는 기본 처리
-                    message.reject(requeue=True)
-                    
-                except Exception as e:
-                    logger.error("메시지 처리 오류: %s", e)
-                    message.reject(requeue=False)
-            
-            # 커스텀 컨슈머 생성
-            consumer = Consumer(
-                conn,
-                queues=[conn.SimpleQueue('waveflow-audio-process-queue-honeybadgers')],
-                callbacks=[process_message],
-                accept=['json']
-            )
-            
-            try:
-                consumer.consume()
-            except Exception as e:
-                logger.error("커스텀 컨슈머 오류: %s", e)
-    
-    # 별도 스레드에서 실행
-    thread = threading.Thread(target=consume_custom_messages, daemon=True)
-    thread.start()
 
 # 설정 검증 및 정보 출력
 try:
@@ -158,46 +100,5 @@ except Exception as e:
     logger.error("Celery 애플리케이션 설정 실패: %s", e)
     raise
 
-# NestJS에서 결과 조회를 위한 헬퍼 함수
-def get_task_result(task_id: str):
-    """
-    태스크 결과를 조회합니다.
-    NestJS에서 이 함수를 사용하여 결과를 가져올 수 있습니다.
-    
-    Args:
-        task_id: Celery 태스크 ID
-        
-    Returns:
-        dict: 태스크 결과 또는 None
-    """
-    try:
-        result = celery_app.AsyncResult(task_id)
-        
-        if result.ready():
-            if result.successful():
-                return {
-                    'status': 'SUCCESS',
-                    'result': result.result,
-                    'task_id': task_id
-                }
-            else:
-                return {
-                    'status': 'FAILURE',
-                    'error': str(result.result),
-                    'task_id': task_id
-                }
-        else:
-            return {
-                'status': result.status,  # PENDING, PROGRESS 등
-                'task_id': task_id
-            }
-    except Exception as e:
-        logger.error("태스크 결과 조회 실패: %s", e)
-        return {
-            'status': 'ERROR',
-            'error': str(e),
-            'task_id': task_id
-        }
-
 if __name__ == '__main__':
-    celery_app.start() 
+    celery_app.start()
