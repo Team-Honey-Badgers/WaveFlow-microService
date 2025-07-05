@@ -83,16 +83,58 @@ celery_app.conf.update(
 # 작업 모듈 자동 검색 설정
 celery_app.autodiscover_tasks(['app'])
 
-# 메시지 형식 처리를 위한 설정
-celery_app.conf.update(
-    task_serializer='json',
-    accept_content=['json', 'application/json'],
-    result_serializer='json',
-    task_ignore_result=True,
-    # 메시지 형식 유연성 증가
-    task_always_eager=False,
-    worker_hijack_root_logger=False,
-)
+# 커스텀 메시지 핸들러 등록
+from celery.signals import worker_ready
+from kombu import Consumer
+import json
+import threading
+
+@worker_ready.connect
+def setup_custom_consumer(sender=None, **kwargs):
+    """Celery 워커 시작 시 커스텀 컨슈머 시작"""
+    def consume_custom_messages():
+        with celery_app.connection() as conn:
+            def process_message(body, message):
+                try:
+                    if isinstance(body, str):
+                        data = json.loads(body)
+                    else:
+                        data = body
+                    
+                    # 원본 메시지 형식 감지
+                    if 'userId' in data and 'filepath' in data:
+                        logger.info("커스텀 메시지 처리: %s", data)
+                        
+                        # process_audio_file 태스크 직접 실행
+                        from .tasks import process_audio_file
+                        process_audio_file.delay(**data)
+                        
+                        message.ack()
+                        return
+                    
+                    # 일반 Celery 메시지는 기본 처리
+                    message.reject(requeue=True)
+                    
+                except Exception as e:
+                    logger.error("메시지 처리 오류: %s", e)
+                    message.reject(requeue=False)
+            
+            # 커스텀 컨슈머 생성
+            consumer = Consumer(
+                conn,
+                queues=[conn.SimpleQueue('waveflow-audio-process-queue-honeybadgers')],
+                callbacks=[process_message],
+                accept=['json']
+            )
+            
+            try:
+                consumer.consume()
+            except Exception as e:
+                logger.error("커스텀 컨슈머 오류: %s", e)
+    
+    # 별도 스레드에서 실행
+    thread = threading.Thread(target=consume_custom_messages, daemon=True)
+    thread.start()
 
 # 설정 검증 및 정보 출력
 try:
