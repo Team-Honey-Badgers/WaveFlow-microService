@@ -189,19 +189,15 @@ except Exception as e:
 def start_custom_handler():
     """Celery 대신 커스텀 핸들러 시작"""
     if USE_CUSTOM_HANDLER:
-        logger.info("커스텀 SQS 핸들러 시작 중...")
-        from .custom_handler import CustomSQSHandler
+        logger.info("간단한 SQS 핸들러 시작 중...")
+        from .simple_handler import SimpleSQSHandler
         
-        # SQS 연결 생성
-        from kombu import Connection
-        conn = Connection(config.CELERY_BROKER_URL)
-        
-        # 커스텀 핸들러 시작
-        handler = CustomSQSHandler(conn, celery_app)
+        # 간단한 핸들러 시작
+        handler = SimpleSQSHandler(config.SQS_QUEUE_URL, config.AWS_REGION)
         try:
             handler.run()
         except KeyboardInterrupt:
-            logger.info("커스텀 핸들러 종료")
+            logger.info("간단한 핸들러 종료")
     else:
         logger.info("표준 Celery 워커 시작")
         celery_app.start()
