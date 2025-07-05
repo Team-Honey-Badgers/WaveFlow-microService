@@ -42,6 +42,9 @@ def task_success_handler(sender=None, result=None, **kwds):
     """태스크 성공 시 호출되는 핸들러"""
     logger.info(f"태스크 성공: {sender.name}")
 
+# 커스텀 핸들러 사용 설정
+USE_CUSTOM_HANDLER = os.getenv('USE_CUSTOM_HANDLER', 'true').lower() == 'true'
+
 # Celery 설정
 celery_app.conf.update(
     # 브로커 설정 (AWS SQS)
@@ -182,5 +185,26 @@ except Exception as e:
     logger.error("Celery 애플리케이션 설정 실패: %s", e)
     raise
 
+# 커스텀 핸들러 시작 함수
+def start_custom_handler():
+    """Celery 대신 커스텀 핸들러 시작"""
+    if USE_CUSTOM_HANDLER:
+        logger.info("커스텀 SQS 핸들러 시작 중...")
+        from .custom_handler import CustomSQSHandler
+        
+        # SQS 연결 생성
+        from kombu import Connection
+        conn = Connection(config.CELERY_BROKER_URL)
+        
+        # 커스텀 핸들러 시작
+        handler = CustomSQSHandler(conn, celery_app)
+        try:
+            handler.run()
+        except KeyboardInterrupt:
+            logger.info("커스텀 핸들러 종료")
+    else:
+        logger.info("표준 Celery 워커 시작")
+        celery_app.start()
+
 if __name__ == '__main__':
-    celery_app.start()
+    start_custom_handler()

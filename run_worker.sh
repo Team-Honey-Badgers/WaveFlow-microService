@@ -116,11 +116,15 @@ echo "Celery 워커 시작됨 (PID: $CELERY_PID)"
 # 워커 시작 확인
 sleep 5
 if ! kill -0 "$CELERY_PID" 2>/dev/null; then
-    echo "❌ 워커 시작 실패"
-    exit 1
+    echo "❌ 워커 시작 실패 - 커스텀 핸들러로 재시도"
+    # 커스텀 핸들러로 재시도
+    export USE_CUSTOM_HANDLER=true
+    python -c "from app.celery_app import start_custom_handler; start_custom_handler()" &
+    CUSTOM_PID=$!
+    echo "커스텀 핸들러 시작됨 (PID: $CUSTOM_PID)"
+else
+    echo "✅ 워커 시작 완료"
 fi
-
-echo "✅ 워커 시작 완료"
 
 # 주기적 헬스 체크 및 임시 파일 정리
 while true; do
