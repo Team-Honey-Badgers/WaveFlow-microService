@@ -83,6 +83,9 @@ celery_app.conf.update(
 # 작업 모듈 자동 검색 설정
 celery_app.autodiscover_tasks(['app'])
 
+# 태스크 등록 확인
+logger.info("등록된 태스크 목록: %s", list(celery_app.tasks.keys()))
+
 # 커스텀 메시지 핸들러 등록
 from celery.signals import worker_ready
 from kombu import Consumer
