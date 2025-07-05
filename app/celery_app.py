@@ -101,7 +101,6 @@ celery_app.conf.update(
     broker_transport='sqs',
     
     # 더 관대한 메시지 처리
-    task_reject_on_worker_lost=False,
     worker_lost_wait=10.0,
     
     # JSON 메시지 직접 처리 허용
