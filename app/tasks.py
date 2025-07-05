@@ -61,8 +61,10 @@ def process_audio_file(self, userId: str = None, trackId: str = None, filepath: 
         logger.info("오디오 파일 처리 시작: userId=%s, trackId=%s, stemId=%s, filepath=%s", 
                    userId, trackId, stemId, filepath)
         
-        # 1. 임시 파일 생성
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.audio') as tmp_file:
+        # 1. 임시 파일 생성 (올바른 확장자로)
+        import os
+        file_ext = os.path.splitext(s3_path)[1] or '.wav'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
             local_filepath = tmp_file.name
         
         # 2. S3에서 오디오 파일 다운로드

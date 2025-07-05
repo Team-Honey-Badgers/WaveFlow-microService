@@ -117,6 +117,10 @@ class AudioProcessor:
             Tuple[np.ndarray, int]: (오디오 데이터, 샘플 레이트)
         """
         try:
+            # librosa 캐싱 비활성화 (Docker 환경 문제 해결)
+            import os
+            os.environ['LIBROSA_CACHE_DIR'] = '/tmp'
+            
             # librosa를 사용하여 오디오 파일 로드
             # sr=None으로 설정하여 원본 샘플 레이트 유지
             self.audio_data, self.sample_rate = librosa.load(self.filepath, sr=None)
