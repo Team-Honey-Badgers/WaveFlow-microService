@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     libsndfile1-dev \
     ffmpeg \
     curl \
+    libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
