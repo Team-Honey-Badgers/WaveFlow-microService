@@ -1,22 +1,29 @@
 """
 Celery 애플리케이션 설정 및 초기화 모듈
 AWS SQS를 브로커로 사용하는 Celery 인스턴스를 생성합니다.
+Numba 캐싱 최적화가 적용되어 있습니다.
 """
 
+# Numba 캐시 디렉토리 전역 설정 (모든 import보다 먼저 실행)
 import os
+os.environ['NUMBA_CACHE_DIR'] = '/tmp/numba_cache'
+
 import logging
 from celery import Celery
 from celery.signals import task_prerun, task_failure, task_retry, task_success
 from . import config
 
-# numba/librosa 캐싱 완전 비활성화 (전역 설정)
-os.environ['LIBROSA_CACHE_DIR'] = '/tmp'
-os.environ['LIBROSA_CACHE_LEVEL'] = '0'
-os.environ['NUMBA_CACHE_DIR'] = '/tmp'
-os.environ['NUMBA_DISABLE_JIT'] = '1'
-os.environ['NUMBA_DISABLE_CUDA'] = '1'
-os.environ['NUMBA_DISABLE_OPENMP'] = '1'
-os.environ['OMP_NUM_THREADS'] = '1'
+# Numba 캐시 디렉토리 생성 및 검증
+cache_dir = os.environ['NUMBA_CACHE_DIR']
+os.makedirs(cache_dir, exist_ok=True)
+
+# librosa 캐싱 설정 (성능 최적화)
+os.environ['LIBROSA_CACHE_DIR'] = '/tmp/librosa_cache'
+os.environ['LIBROSA_CACHE_LEVEL'] = '10'
+os.makedirs('/tmp/librosa_cache', exist_ok=True)
+
+# OpenMP 스레드 수 제한 (컨테이너 환경 최적화)
+os.environ['OMP_NUM_THREADS'] = '2'
 
 # 로깅 설정
 logging.basicConfig(
@@ -25,6 +32,7 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+logger.info("Numba 캐시 디렉토리 설정 완료: %s", cache_dir)
 
 # EC2 IAM Role 사용 - 자격 증명을 환경변수로 설정하지 않음
 # EC2 인스턴스 메타데이터에서 자동으로 IAM Role 자격 증명 사용
@@ -33,23 +41,65 @@ os.environ.setdefault('AWS_DEFAULT_REGION', config.AWS_REGION)
 # Celery 애플리케이션 인스턴스 생성
 celery_app = Celery('audio-processor')
 
+# Numba JIT 함수 워밍업 (시작 시 JIT 컴파일 수행)
+def warmup_numba_functions():
+    """
+    성능 중요 함수들의 Numba JIT 컴파일을 미리 수행합니다.
+    시작 시 한 번만 실행되어 이후 호출 시 빠른 실행을 보장합니다.
+    """
+    logger.info("Numba JIT 함수 워밍업 시작...")
+    
+    try:
+        # audio_processor의 성능 중요 함수들 워밍업
+        from .audio_processor import AudioProcessor
+        logger.info("AudioProcessor 모듈 import 완료")
+        
+        # 더미 데이터로 JIT 컴파일 트리거
+        import numpy as np
+        
+        # 더미 오디오 데이터 생성 (1초, 44.1kHz 샘플레이트)
+        dummy_audio = np.random.rand(44100).astype(np.float32)
+        
+        # 워밍업 함수들 호출 (JIT 컴파일 트리거)
+        try:
+            # numpy 기본 연산들 워밍업
+            _ = np.mean(dummy_audio)
+            _ = np.max(dummy_audio)
+            _ = np.abs(dummy_audio)
+            logger.info("Numpy 연산 워밍업 완료")
+        except Exception as e:
+            logger.warning("Numpy 워밍업 실패: %s", e)
+        
+        logger.info("Numba JIT 함수 워밍업 완료")
+        
+    except ImportError as e:
+        logger.warning("모듈 import 실패 (워밍업 스킵): %s", e)
+    except Exception as e:
+        logger.warning("Numba 워밍업 중 오류 발생 (계속 진행): %s", e)
+
+# 워밍업 실행
+warmup_numba_functions()
+
 # 커스텀 메시지 처리 신호 핸들러
 @task_prerun.connect
 def task_prerun_handler(sender=None, task_id=None, task=None, args=None, kwargs=None, **kwds):
     """태스크 실행 전 호출되는 핸들러"""
-    logger.info(f"태스크 시작: {task.name} (ID: {task_id})")
+    task_name = getattr(task, 'name', 'Unknown') if task else 'Unknown'
+    logger.info(f"태스크 시작: {task_name} (ID: {task_id})")
     logger.info(f"Args: {args}, Kwargs: {kwargs}")
 
 @task_failure.connect
 def task_failure_handler(sender=None, task_id=None, exception=None, traceback=None, einfo=None, **kwds):
     """태스크 실패 시 호출되는 핸들러"""
-    logger.error(f"태스크 실패: {sender.name} (ID: {task_id})")
+    task_name = getattr(sender, 'name', 'Unknown') if sender else 'Unknown'
+    logger.error(f"태스크 실패: {task_name} (ID: {task_id})")
     logger.error(f"Exception: {exception}")
 
 @task_success.connect
 def task_success_handler(sender=None, result=None, **kwds):
     """태스크 성공 시 호출되는 핸들러"""
-    logger.info(f"태스크 성공: {sender.name}")
+    task_name = getattr(sender, 'name', 'Unknown') if sender else 'Unknown'
+    logger.info(f"태스크 성공: {task_name}")
 
 # 커스텀 핸들러 사용 설정
 USE_CUSTOM_HANDLER = os.getenv('USE_CUSTOM_HANDLER', 'true').lower() == 'true'
@@ -185,6 +235,7 @@ try:
     logger.info("Result Backend: %s (%s)", 
                result_backend_info['backend_type'], 
                '분산 지원' if result_backend_info['distributed_support'] else '로컬 전용')
+    logger.info("Numba 캐시 디렉토리: %s", cache_dir)
     
     if not result_backend_info['distributed_support']:
         logger.warning("⚠️  현재 result backend는 로컬 전용입니다. 다른 EC2 인스턴스에서 결과 조회가 불가능합니다.")
