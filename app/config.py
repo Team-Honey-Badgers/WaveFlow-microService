@@ -28,7 +28,7 @@ CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'sqs://')
 CELERY_RESULT_BACKEND = 'cache+memory://'
 
 # 파일 처리 설정
-ALLOWED_MIME_TYPES = os.getenv('ALLOWED_MIME_TYPES', 'audio/wav,audio/mpeg,audio/mp3,audio/flac,audio/ogg').split(',')
+ALLOWED_MIME_TYPES = os.getenv('ALLOWED_MIME_TYPES', 'audio/wav,audio/x-wav,audio/mpeg,audio/mp3,audio/flac,audio/ogg,audio/wave').split(',')
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', '100'))
 DEFAULT_WAVEFORM_PEAKS = int(os.getenv('DEFAULT_WAVEFORM_PEAKS', '1024'))
 
