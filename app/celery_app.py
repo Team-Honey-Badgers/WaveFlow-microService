@@ -91,7 +91,6 @@ celery_app.conf.update(
     # 워커 설정
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=1000,
-    worker_disable_rate_limits=True,
     
     # 결과 만료 설정
     result_expires=config.CELERY_RESULT_EXPIRES,
@@ -117,7 +116,6 @@ celery_app.conf.update(
     broker_connection_max_retries=10,
     
     # 메시지 파싱 관련 설정
-    task_always_eager=False,
     task_eager_propagates=False,
     
     # SQS 특화 설정
