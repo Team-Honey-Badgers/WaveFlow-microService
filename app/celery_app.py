@@ -60,6 +60,9 @@ celery_app.conf.update(
         },
         'wait_time_seconds': 20,
         'queue_name_prefix': '',
+        # 메시지 파싱 옵션
+        'message_format': 'json',
+        'raw_message_delivery': False,
     },
     
     # 작업 실행 설정 - Celery 5.3.4 호환
@@ -69,8 +72,8 @@ celery_app.conf.update(
     timezone='UTC',
     enable_utc=True,
     
-    # 메시지 프로토콜 설정 (Protocol 2 - 호환성)
-    task_protocol=2,
+    # 메시지 프로토콜 설정 (Protocol 1 - 안정적)
+    task_protocol=1,
     
     # 메시지 압축 완전 비활성화
     task_compression=None,
