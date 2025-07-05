@@ -43,19 +43,23 @@ celery_app.conf.update(
         'queue_name_prefix': '',
     },
     
-    # 작업 실행 설정
+    # 작업 실행 설정 - 직접 JSON 메시지 처리
     task_serializer='json',
-    accept_content=['json'],
+    accept_content=['json', 'pickle', 'application/json'],
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
     
-    # 메시지 프로토콜 설정 (Protocol 1 사용 - 더 안정적)
+    # 메시지 프로토콜 설정 (Protocol 1 - 가장 안정적)
     task_protocol=1,
+    
+    # 메시지 압축 비활성화
+    task_compression=None,
+    result_compression=None,
     
     # 작업 신뢰성 설정
     task_acks_late=True,
-    task_reject_on_worker_lost=True,
+    task_reject_on_worker_lost=False,
     
     # 재시도 설정
     task_default_retry_delay=config.RETRY_DELAY,
@@ -88,10 +92,35 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     broker_connection_retry=True,
     broker_connection_max_retries=10,
+    
+    # 메시지 파싱 관련 설정
+    task_always_eager=False,
+    task_eager_propagates=False,
+    
+    # SQS 특화 설정
+    broker_transport='sqs',
+    
+    # 더 관대한 메시지 처리
+    task_reject_on_worker_lost=False,
+    worker_lost_wait=10.0,
+    
+    # JSON 메시지 직접 처리 허용
+    task_routes={
+        'app.tasks.process_audio_file': {
+            'queue': 'waveflow-audio-process-queue-honeybadgers'
+        }
+    },
 )
 
 # 작업 모듈 자동 검색 설정
 celery_app.autodiscover_tasks(['app'])
+
+# 태스크 직접 등록 - 자동 검색이 실패할 경우 대비
+try:
+    from .tasks import process_audio_file, health_check, cleanup_temp_files
+    logger.info("태스크 직접 import 성공")
+except ImportError as e:
+    logger.error("태스크 import 실패: %s", e)
 
 # 태스크 등록 확인
 logger.info("등록된 태스크 목록: %s", list(celery_app.tasks.keys()))
