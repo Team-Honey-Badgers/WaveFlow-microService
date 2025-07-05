@@ -19,8 +19,14 @@ class CustomSQSHandler(ConsumerMixin):
         self.celery_app = celery_app
         
     def get_consumers(self, Consumer, channel):
+        from kombu import Queue
+        # 큐를 직접 정의하여 ListQueues 권한 불필요
+        queue = Queue(
+            'waveflow-audio-process-queue-honeybadgers',
+            routing_key='waveflow-audio-process-queue-honeybadgers'
+        )
         return [Consumer(
-            queues=[self.celery_app.conf.task_routes['app.tasks.process_audio_file']['queue']],
+            queues=[queue],
             callbacks=[self.handle_message],
             accept=['json']
         )]
