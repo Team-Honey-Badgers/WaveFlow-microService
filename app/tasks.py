@@ -45,6 +45,18 @@ def process_audio_file(self, userId: str = None, trackId: str = None, filepath: 
     job_id = job_id or stemId or task_id
     s3_path = s3_path or filepath
     
+    logger.info("====== 오디오 파일 처리 태스크 시작 ======")
+    logger.info(f"Task ID: {task_id}")
+    logger.info(f"입력 파라미터:")
+    logger.info(f"  - userId: {userId}")
+    logger.info(f"  - trackId: {trackId}")
+    logger.info(f"  - filepath: {filepath}")
+    logger.info(f"  - stemId: {stemId}")
+    logger.info(f"  - timestamp: {timestamp}")
+    logger.info(f"  - job_id: {job_id}")
+    logger.info(f"  - s3_path: {s3_path}")
+    logger.info("=======================================")
+    
     try:
         logger.info("오디오 파일 처리 시작: userId=%s, trackId=%s, stemId=%s, filepath=%s", 
                    userId, trackId, stemId, filepath)
