@@ -83,6 +83,17 @@ celery_app.conf.update(
 # 작업 모듈 자동 검색 설정
 celery_app.autodiscover_tasks(['app'])
 
+# 메시지 형식 처리를 위한 설정
+celery_app.conf.update(
+    task_serializer='json',
+    accept_content=['json', 'application/json'],
+    result_serializer='json',
+    task_ignore_result=True,
+    # 메시지 형식 유연성 증가
+    task_always_eager=False,
+    worker_hijack_root_logger=False,
+)
+
 # 설정 검증 및 정보 출력
 try:
     config.validate_config()

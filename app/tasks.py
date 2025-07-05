@@ -15,7 +15,7 @@ from .aws_utils import aws_utils
 
 logger = logging.getLogger(__name__)
 
-@celery_app.task(name='process_audio_file', bind=True)
+@celery_app.task(bind=True)
 def process_audio_file(self, userId: str = None, trackId: str = None, filepath: str = None, 
                       stemId: str = None, timestamp: str = None, 
                       job_id: str = None, s3_path: str = None, original_filename: str = None, 
