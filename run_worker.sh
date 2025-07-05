@@ -64,10 +64,10 @@ cleanup() {
     echo "워커 종료 신호 받음..."
     echo "진행 중인 작업 완료 대기 중..."
     
-    # Celery 워커에 종료 신호 전송
-    if [ ! -z "$CELERY_PID" ]; then
-        kill -TERM "$CELERY_PID" 2>/dev/null || true
-        wait "$CELERY_PID" 2>/dev/null || true
+    # 커스텀 핸들러에 종료 신호 전송
+    if [ ! -z "$CUSTOM_PID" ]; then
+        kill -TERM "$CUSTOM_PID" 2>/dev/null || true
+        wait "$CUSTOM_PID" 2>/dev/null || true
     fi
     
     # 임시 파일 정리
@@ -95,49 +95,40 @@ except Exception as e:
     sys.exit(1)
 "
 
-# Celery 워커 시작
-echo "Celery 워커 시작 중..."
-echo "명령어: celery -A app.celery_app worker --loglevel=$LOG_LEVEL --concurrency=$CONCURRENCY --hostname=$WORKER_NAME@%h --queues=$QUEUE_NAME"
+# 커스텀 핸들러 직접 시작
+echo "커스텀 SQS 핸들러 시작 중..."
+export USE_CUSTOM_HANDLER=true
 
-# 백그라운드에서 워커 실행
-celery -A app.celery_app worker \
-    --loglevel="$LOG_LEVEL" \
-    --concurrency="$CONCURRENCY" \
-    --hostname="$WORKER_NAME@%h" \
-    --queues="$QUEUE_NAME" \
-    --without-gossip \
-    --without-mingle \
-    --without-heartbeat \
-    --optimization=fair &
+# Python 커스텀 핸들러 실행
+python -c "
+from app.celery_app import start_custom_handler
+start_custom_handler()
+" &
 
-CELERY_PID=$!
-echo "Celery 워커 시작됨 (PID: $CELERY_PID)"
+CUSTOM_PID=$!
+echo "커스텀 핸들러 시작됨 (PID: $CUSTOM_PID)"
 
-# 워커 시작 확인
+# 핸들러 시작 확인
 sleep 5
-if ! kill -0 "$CELERY_PID" 2>/dev/null; then
-    echo "❌ 워커 시작 실패 - 커스텀 핸들러로 재시도"
-    # 커스텀 핸들러로 재시도
-    export USE_CUSTOM_HANDLER=true
-    python -c "from app.celery_app import start_custom_handler; start_custom_handler()" &
-    CUSTOM_PID=$!
-    echo "커스텀 핸들러 시작됨 (PID: $CUSTOM_PID)"
+if ! kill -0 "$CUSTOM_PID" 2>/dev/null; then
+    echo "❌ 커스텀 핸들러 시작 실패"
+    exit 1
 else
-    echo "✅ 워커 시작 완료"
+    echo "✅ 커스텀 핸들러 시작 완료"
 fi
 
 # 주기적 헬스 체크 및 임시 파일 정리
 while true; do
     sleep 300  # 5분마다 실행
     
-    # 워커 프로세스 확인
-    if ! kill -0 "$CELERY_PID" 2>/dev/null; then
-        echo "❌ 워커 프로세스가 종료되었습니다."
+    # 커스텀 핸들러 프로세스 확인
+    if ! kill -0 "$CUSTOM_PID" 2>/dev/null; then
+        echo "❌ 커스텀 핸들러 프로세스가 종료되었습니다."
         exit 1
     fi
     
     # 임시 파일 정리 (1시간 이상 된 파일)
     find /tmp -name "tmp*" -type f -mtime +0.04 -delete 2>/dev/null || true
     
-    echo "워커 실행 중... (PID: $CELERY_PID)"
+    echo "커스텀 핸들러 실행 중... (PID: $CUSTOM_PID)"
 done 
