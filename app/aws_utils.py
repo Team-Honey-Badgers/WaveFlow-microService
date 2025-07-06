@@ -1,6 +1,6 @@
 """
 AWS 서비스 연동 유틸리티 모듈
-S3 파일 다운로드/업로드 및 SQS 메시지 전송 기능을 제공합니다.
+S3 파일 다운로드/업로드/삭제 및 SQS 메시지 전송 기능을 제공합니다.
 """
 
 import json
@@ -89,6 +89,30 @@ class AWSUtils:
             return True
         except ClientError as e:
             logger.error("S3 파일 업로드 실패: %s", e)
+            return False
+        except Exception as e:
+            logger.error("예상치 못한 오류 발생: %s", e)
+            return False
+    
+    def delete_from_s3(self, s3_path: str) -> bool:
+        """
+        S3에서 파일을 삭제합니다.
+        
+        Args:
+            s3_path: S3 객체 경로 (예: "folder/file.wav")
+            
+        Returns:
+            bool: 삭제 성공 여부
+        """
+        try:
+            self.s3_client.delete_object(
+                Bucket=self.config.S3_BUCKET_NAME,
+                Key=s3_path
+            )
+            logger.info("S3 파일 삭제 완료: s3://%s/%s", self.config.S3_BUCKET_NAME, s3_path)
+            return True
+        except ClientError as e:
+            logger.error("S3 파일 삭제 실패: %s", e)
             return False
         except Exception as e:
             logger.error("예상치 못한 오류 발생: %s", e)

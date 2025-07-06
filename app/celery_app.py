@@ -195,7 +195,13 @@ celery_app.conf.update(
     
     # JSON 메시지 직접 처리 허용
     task_routes={
-        'app.tasks.process_audio_file': {
+        'app.tasks.generate_hash_and_webhook': {
+            'queue': 'waveflow-audio-process-queue-honeybadgers'
+        },
+        'app.tasks.process_duplicate_file': {
+            'queue': 'waveflow-audio-process-queue-honeybadgers'
+        },
+        'app.tasks.process_audio_analysis': {
             'queue': 'waveflow-audio-process-queue-honeybadgers'
         }
     },
@@ -217,7 +223,7 @@ celery_app.autodiscover_tasks(['app'])
 
 # 태스크 직접 등록 - 자동 검색이 실패할 경우 대비
 try:
-    from .tasks import process_audio_file, health_check, cleanup_temp_files
+    from .tasks import generate_hash_and_webhook, process_duplicate_file, process_audio_analysis, health_check, cleanup_temp_files
     logger.info("태스크 직접 import 성공")
 except ImportError as e:
     logger.error("태스크 import 실패: %s", e)
