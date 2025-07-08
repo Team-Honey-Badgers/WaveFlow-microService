@@ -334,15 +334,18 @@ def process_audio_analysis(self, userId: str = None, trackId: str = None,
         
         # 3. 추가 임시 파일 정리 (AudioProcessor에서 생성될 수 있는 파일들)
         try:
-            import tempfile
-            temp_dir = tempfile.gettempdir()
-            temp_pattern = f"tmp*{stemId}*"
-            
             import glob
-            for temp_file in glob.glob(os.path.join(temp_dir, temp_pattern)):
-                if os.path.exists(temp_file):
-                    os.unlink(temp_file)
-                    logger.debug("추가 임시 파일 정리: %s", temp_file)
+            temp_dir = tempfile.gettempdir()
+            
+            # stemId가 None이 아닌 경우에만 패턴 검색
+            if stemId:
+                temp_pattern = f"tmp*{stemId}*"
+                for temp_file in glob.glob(os.path.join(temp_dir, temp_pattern)):
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                        logger.debug("추가 임시 파일 정리: %s", temp_file)
+            else:
+                logger.debug("stemId가 None이므로 패턴 기반 임시 파일 정리 건너뜀")
         except Exception as e:
             logger.warning("추가 임시 파일 정리 실패: %s", e)
         
