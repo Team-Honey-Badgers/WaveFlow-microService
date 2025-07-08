@@ -87,13 +87,12 @@ def generate_hash_and_webhook(self, userId: str = None, trackId: str = None,
             logger.error("웹훅 전송 실패: %s", e)
             raise
         
-        # 5. 결과 반환 (파일은 보관하여 후속 처리 대기)
+        # 5. 결과 반환 (S3 파일 경로만 포함, 임시 파일은 제외)
         result = {
             'task_id': task_id,
             'stemId': stemId,
             'audio_hash': audio_hash,
-            'filepath': filepath,
-            'local_filepath': local_filepath,  # 임시 파일 경로 보관
+            'filepath': filepath,  # S3 파일 경로만 포함
             'status': 'hash_sent_to_webhook',
             'processed_at': aws_utils._get_current_timestamp()
         }
@@ -104,13 +103,6 @@ def generate_hash_and_webhook(self, userId: str = None, trackId: str = None,
     except Exception as e:
         logger.error("해시 생성 및 웹훅 전송 실패: stemId=%s, error=%s", stemId, str(e))
         
-        # 임시 파일 정리
-        if local_filepath and os.path.exists(local_filepath):
-            try:
-                os.unlink(local_filepath)
-            except Exception as cleanup_error:
-                logger.warning("임시 파일 정리 실패: %s", cleanup_error)
-        
         # 재시도 로직
         if self.request.retries < self.max_retries:
             logger.info("작업 재시도 예약: stemId=%s, retry=%d/%d", 
@@ -120,6 +112,15 @@ def generate_hash_and_webhook(self, userId: str = None, trackId: str = None,
         
         logger.error("최대 재시도 횟수 초과: stemId=%s", stemId)
         raise
+        
+    finally:
+        # EC2 임시 파일 정리 (성공/실패와 관계없이 실행)
+        if local_filepath and os.path.exists(local_filepath):
+            try:
+                os.unlink(local_filepath)
+                logger.info("EC2 임시 파일 정리 완료: %s", local_filepath)
+            except Exception as cleanup_error:
+                logger.warning("EC2 임시 파일 정리 실패: %s", cleanup_error)
 
 
 @celery_app.task(name='app.tasks.process_duplicate_file', bind=True)
@@ -312,28 +313,41 @@ def process_audio_analysis(self, userId: str = None, trackId: str = None,
         raise
         
     finally:
-        # 임시 파일 정리
+        # ⚠️ 중요: S3 원본 파일은 절대 삭제하지 않음!
+        # EC2 내의 임시 파일들만 정리
+        
+        # 1. 로컬 임시 오디오 파일 정리
         try:
             if local_filepath and os.path.exists(local_filepath):
                 os.unlink(local_filepath)
-                logger.debug("임시 오디오 파일 삭제: %s", local_filepath)
+                logger.info("EC2 임시 오디오 파일 정리 완료: %s", local_filepath)
         except Exception as e:
-            logger.warning("임시 오디오 파일 삭제 실패: %s", e)
+            logger.warning("EC2 임시 오디오 파일 정리 실패: %s", e)
         
+        # 2. 로컬 임시 파형 파일 정리
         try:
             if waveform_filepath and os.path.exists(waveform_filepath):
                 os.unlink(waveform_filepath)
-                logger.debug("임시 파형 파일 삭제: %s", waveform_filepath)
+                logger.info("EC2 임시 파형 파일 정리 완료: %s", waveform_filepath)
         except Exception as e:
-            logger.warning("임시 파형 파일 삭제 실패: %s", e)
+            logger.warning("EC2 임시 파형 파일 정리 실패: %s", e)
         
-        # 원본 WAV 파일 정리 (분석 완료 후)
+        # 3. 추가 임시 파일 정리 (AudioProcessor에서 생성될 수 있는 파일들)
         try:
-            if filepath:
-                logger.info("원본 WAV 파일 S3에서 삭제: %s", filepath)
-                aws_utils.delete_from_s3(filepath)
+            import tempfile
+            temp_dir = tempfile.gettempdir()
+            temp_pattern = f"tmp*{stemId}*"
+            
+            import glob
+            for temp_file in glob.glob(os.path.join(temp_dir, temp_pattern)):
+                if os.path.exists(temp_file):
+                    os.unlink(temp_file)
+                    logger.debug("추가 임시 파일 정리: %s", temp_file)
         except Exception as e:
-            logger.warning("원본 WAV 파일 삭제 실패: %s", e)
+            logger.warning("추가 임시 파일 정리 실패: %s", e)
+        
+        # 📝 참고: S3 원본 파일 (filepath)은 보존됨
+        logger.info("S3 원본 파일 보존됨: %s", filepath)
 
 
 def generate_file_hash(filepath: str) -> str:
@@ -409,55 +423,124 @@ def health_check(self):
 @celery_app.task(name='cleanup_temp_files', bind=True)
 def cleanup_temp_files(self):
     """
-    임시 파일 정리 태스크
-    시스템의 임시 파일을 정리합니다.
+    EC2 임시 파일 정리 태스크
+    오디오 처리 과정에서 생성된 임시 파일들을 정리합니다.
     
     Returns:
         dict: 정리 결과
     """
     try:
-        logger.info("임시 파일 정리 시작: task_id=%s", self.request.id)
+        logger.info("EC2 임시 파일 정리 시작: task_id=%s", self.request.id)
         
         temp_dir = tempfile.gettempdir()
         cleaned_count = 0
         error_count = 0
+        total_size_cleaned = 0
         
         # 임시 디렉토리에서 오래된 파일 찾기
         import time
         current_time = time.time()
-        max_age = 3600  # 1시간
+        max_age = 1800  # 30분 (오디오 처리 후 충분한 시간)
+        
+        # 오디오 처리 관련 임시 파일 패턴들
+        audio_extensions = ['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac']
+        temp_patterns = [
+            'tmp',          # tempfile 모듈 기본 prefix
+            'audio_',       # 오디오 관련 임시 파일
+            'waveform_',    # 파형 관련 임시 파일
+            'stem'          # stem 관련 임시 파일
+        ]
         
         for filename in os.listdir(temp_dir):
             filepath = os.path.join(temp_dir, filename)
             
-            # 우리가 생성한 임시 파일만 대상으로 함
-            if not (filename.startswith('tmp') and 
-                   (filename.endswith('.audio') or filename.endswith('.json'))):
+            # 파일인지 확인
+            if not os.path.isfile(filepath):
+                continue
+            
+            # 우리가 생성한 임시 파일인지 확인
+            is_our_temp_file = False
+            
+            # 패턴 기반 확인
+            for pattern in temp_patterns:
+                if filename.startswith(pattern):
+                    is_our_temp_file = True
+                    break
+            
+            # 확장자 기반 확인 (오디오 파일)
+            if not is_our_temp_file:
+                for ext in audio_extensions:
+                    if filename.endswith(ext) and (filename.startswith('tmp') or 'temp' in filename.lower()):
+                        is_our_temp_file = True
+                        break
+            
+            # JSON 파형 파일 확인
+            if not is_our_temp_file and filename.endswith('.json'):
+                if any(keyword in filename for keyword in ['waveform', 'peaks', 'audio']):
+                    is_our_temp_file = True
+            
+            if not is_our_temp_file:
                 continue
             
             try:
-                if os.path.isfile(filepath):
-                    file_age = current_time - os.path.getmtime(filepath)
-                    if file_age > max_age:
-                        os.unlink(filepath)
-                        cleaned_count += 1
-                        logger.debug("임시 파일 삭제: %s", filepath)
+                # 파일 나이 확인
+                file_age = current_time - os.path.getmtime(filepath)
+                if file_age > max_age:
+                    # 파일 크기 기록
+                    file_size = os.path.getsize(filepath)
+                    
+                    # 파일 삭제
+                    os.unlink(filepath)
+                    cleaned_count += 1
+                    total_size_cleaned += file_size
+                    
+                    logger.debug("임시 파일 정리: %s (크기: %d bytes, 나이: %.1f분)", 
+                               filepath, file_size, file_age / 60)
+                    
             except Exception as e:
                 error_count += 1
-                logger.warning("임시 파일 삭제 실패: %s, error: %s", filepath, e)
+                logger.warning("임시 파일 정리 실패: %s, error: %s", filepath, e)
+        
+        # 추가: 매우 오래된 파일들 강제 정리 (2시간 이상)
+        very_old_age = 7200  # 2시간
+        very_old_cleaned = 0
+        
+        try:
+            import glob
+            # 매우 오래된 임시 파일들 찾기
+            for pattern in ['tmp*', 'audio_*', 'waveform_*']:
+                for filepath in glob.glob(os.path.join(temp_dir, pattern)):
+                    if os.path.isfile(filepath):
+                        file_age = current_time - os.path.getmtime(filepath)
+                        if file_age > very_old_age:
+                            try:
+                                file_size = os.path.getsize(filepath)
+                                os.unlink(filepath)
+                                very_old_cleaned += 1
+                                total_size_cleaned += file_size
+                                logger.info("매우 오래된 임시 파일 강제 정리: %s", filepath)
+                            except Exception:
+                                pass
+        except Exception as e:
+            logger.warning("매우 오래된 파일 정리 중 오류: %s", e)
         
         result = {
             'status': 'completed',
-            'cleaned_count': cleaned_count,
+            'cleaned_count': cleaned_count + very_old_cleaned,
             'error_count': error_count,
+            'total_size_cleaned_bytes': total_size_cleaned,
+            'total_size_cleaned_mb': round(total_size_cleaned / (1024 * 1024), 2),
+            'max_age_minutes': max_age / 60,
+            'temp_directory': temp_dir,
             'timestamp': aws_utils._get_current_timestamp()
         }
         
-        logger.info("임시 파일 정리 완료: %s", result)
+        logger.info("EC2 임시 파일 정리 완료: %d개 파일 정리 (%.2f MB)", 
+                   result['cleaned_count'], result['total_size_cleaned_mb'])
         return result
         
     except Exception as e:
-        logger.error("임시 파일 정리 실패: %s", e)
+        logger.error("EC2 임시 파일 정리 실패: %s", e)
         return {
             'status': 'error',
             'error': str(e),
