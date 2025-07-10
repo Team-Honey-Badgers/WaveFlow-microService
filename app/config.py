@@ -99,8 +99,6 @@ def get_sqs_queue_name():
         return SQS_QUEUE_NAME
     
     if SQS_QUEUE_URL:
-        # SQS URL에서 큐 이름 추출
-        # 형태: https://sqs.region.amazonaws.com/account-id/queue-name
         parts = SQS_QUEUE_URL.split('/')
         if len(parts) >= 2:
             return parts[-1]  # 마지막 부분이 큐 이름
