@@ -20,28 +20,18 @@ logger = logging.getLogger(__name__)
 @celery_app.task(name='app.tasks.generate_hash_and_webhook', bind=True)
 def generate_hash_and_webhook(self, userId: str = None, trackId: str = None, 
                              stemId: str = None, filepath: str = None, 
-                             timestamp: str = None, original_filename: str = None,
-                             sessionId: str = None, file_name: str = None,
-                             key: str = None, tag: str = None, 
-                             description: str = None, category_id: str = None):
+                             timestamp: str = None, original_filename: str = None):
     """
     1단계: 해시 생성 및 웹훅 전송 테스크
     S3에서 파일을 다운로드하여 해시를 생성하고, 웹훅으로 NestJS 서버에 전송
-    NestJS에서 중복 검사 후 중복이 아니면 DB 레코드 생성
     
     Args:
         userId: 사용자 ID
         trackId: 트랙 ID
-        stemId: 임시 스템 ID (DB 레코드 생성 후 실제 ID로 변경됨)
+        stemId: 스템 ID
         filepath: S3 파일 경로
         timestamp: 타임스탬프
         original_filename: 원본 파일명
-        sessionId: 세션 ID
-        file_name: 파일명
-        key: 사용자 입력 키
-        tag: 사용자 입력 태그
-        description: 사용자 입력 설명
-        category_id: 카테고리 ID
         
     Returns:
         dict: 처리 결과 (해시값 포함)
@@ -57,9 +47,6 @@ def generate_hash_and_webhook(self, userId: str = None, trackId: str = None,
     logger.info(f"  - stemId: {stemId}")
     logger.info(f"  - filepath: {filepath}")
     logger.info(f"  - timestamp: {timestamp}")
-    logger.info(f"  - sessionId: {sessionId}")
-    logger.info(f"  - file_name: {file_name}")
-    logger.info(f"  - category_id: {category_id}")
     logger.info("===========================================")
     
     try:
@@ -88,12 +75,6 @@ def generate_hash_and_webhook(self, userId: str = None, trackId: str = None,
             'audio_hash': audio_hash,
             'timestamp': timestamp,
             'original_filename': original_filename,
-            'sessionId': sessionId,
-            'file_name': file_name,
-            'key': key,
-            'tag': tag,
-            'description': description,
-            'category_id': category_id,
             'status': 'hash_generated'
         }
         
@@ -188,15 +169,12 @@ def process_duplicate_file(self, userId: str = None, trackId: str = None,
             'processed_at': aws_utils._get_current_timestamp()
         }
         
-        # 3. 웹훅으로 완료 알림 전송 (임시 stemId인 경우 스킵)
-        if not stemId.startswith('temp-'):
-            try:
-                from .webhook import send_completion_webhook
-                send_completion_webhook(stemId, result, "SUCCESS")
-            except Exception as e:
-                logger.warning("웹훅 전송 실패: %s", e)
-        else:
-            logger.info("임시 stemId이므로 completion webhook 전송을 스킵합니다: %s", stemId)
+        # 3. 웹훅으로 완료 알림 전송
+        try:
+            from .webhook import send_completion_webhook
+            send_completion_webhook(stemId, result, "SUCCESS")
+        except Exception as e:
+            logger.warning("웹훅 전송 실패: %s", e)
         
         logger.info("중복 파일 처리 완료: stemId=%s", stemId)
         return result
@@ -219,8 +197,7 @@ def process_duplicate_file(self, userId: str = None, trackId: str = None,
 def process_audio_analysis(self, userId: str = None, trackId: str = None, 
                           stemId: str = None, filepath: str = None, 
                           audio_hash: str = None, timestamp: str = None,
-                          original_filename: str = None, num_peaks: int = None,
-                          sessionId: str = None):
+                          original_filename: str = None, num_peaks: int = None):
     """
     3단계: 오디오 분석 테스크
     오디오 파일을 분석하여 파형 데이터를 생성하고 S3에 저장
@@ -234,7 +211,6 @@ def process_audio_analysis(self, userId: str = None, trackId: str = None,
         timestamp: 타임스탬프
         original_filename: 원본 파일명
         num_peaks: 생성할 파형 피크 개수
-        sessionId: 세션 ID
         
     Returns:
         dict: 처리 결과
@@ -252,7 +228,6 @@ def process_audio_analysis(self, userId: str = None, trackId: str = None,
     logger.info(f"  - filepath: {filepath}")
     logger.info(f"  - audio_hash: {audio_hash}")
     logger.info(f"  - num_peaks: {num_peaks}")
-    logger.info(f"  - sessionId: {sessionId}")
     logger.info("=================================")
     
     try:

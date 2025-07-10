@@ -23,12 +23,6 @@ def send_hash_webhook(stem_id: str, result: Dict[str, Any]):
         "audio_hash": result.get('audio_hash'),
         "timestamp": result.get('timestamp'),
         "original_filename": result.get('original_filename'),
-        "sessionId": result.get('sessionId'),
-        "file_name": result.get('file_name'),
-        "key": result.get('key'),
-        "tag": result.get('tag'),
-        "description": result.get('description'),
-        "category_id": result.get('category_id'),
         "status": "hash_generated"
     }
     
