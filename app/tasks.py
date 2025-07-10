@@ -188,12 +188,15 @@ def process_duplicate_file(self, userId: str = None, trackId: str = None,
             'processed_at': aws_utils._get_current_timestamp()
         }
         
-        # 3. 웹훅으로 완료 알림 전송
-        try:
-            from .webhook import send_completion_webhook
-            send_completion_webhook(stemId, result, "SUCCESS")
-        except Exception as e:
-            logger.warning("웹훅 전송 실패: %s", e)
+        # 3. 웹훅으로 완료 알림 전송 (임시 stemId인 경우 스킵)
+        if not stemId.startswith('temp-'):
+            try:
+                from .webhook import send_completion_webhook
+                send_completion_webhook(stemId, result, "SUCCESS")
+            except Exception as e:
+                logger.warning("웹훅 전송 실패: %s", e)
+        else:
+            logger.info("임시 stemId이므로 completion webhook 전송을 스킵합니다: %s", stemId)
         
         logger.info("중복 파일 처리 완료: stemId=%s", stemId)
         return result
