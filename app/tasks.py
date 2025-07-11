@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 @celery_app.task(name='app.tasks.generate_hash_and_webhook', bind=True)
 def generate_hash_and_webhook(self, userId: str = None, trackId: str = None, 
                              stemId: str = None, filepath: str = None, 
-                             timestamp: str = None, original_filename: str = None):
+                             sessionId: str = None, timestamp: str = None, 
+                             original_filename: str = None):
     """
     1단계: 해시 생성 및 웹훅 전송 테스크
     S3에서 파일을 다운로드하여 해시를 생성하고, 웹훅으로 NestJS 서버에 전송
@@ -30,6 +31,7 @@ def generate_hash_and_webhook(self, userId: str = None, trackId: str = None,
         trackId: 트랙 ID
         stemId: 스템 ID
         filepath: S3 파일 경로
+        sessionId: 세션 ID
         timestamp: 타임스탬프
         original_filename: 원본 파일명
         
@@ -46,6 +48,7 @@ def generate_hash_and_webhook(self, userId: str = None, trackId: str = None,
     logger.info(f"  - trackId: {trackId}")
     logger.info(f"  - stemId: {stemId}")
     logger.info(f"  - filepath: {filepath}")
+    logger.info(f"  - sessionId: {sessionId}")
     logger.info(f"  - timestamp: {timestamp}")
     logger.info("===========================================")
     
@@ -72,6 +75,7 @@ def generate_hash_and_webhook(self, userId: str = None, trackId: str = None,
             'trackId': trackId,
             'stemId': stemId,
             'filepath': filepath,
+            'sessionId': sessionId,
             'audio_hash': audio_hash,
             'timestamp': timestamp,
             'original_filename': original_filename,
@@ -93,6 +97,7 @@ def generate_hash_and_webhook(self, userId: str = None, trackId: str = None,
             'stemId': stemId,
             'audio_hash': audio_hash,
             'filepath': filepath,  # S3 파일 경로만 포함
+            'sessionId': sessionId,
             'status': 'hash_sent_to_webhook',
             'processed_at': aws_utils._get_current_timestamp()
         }
@@ -169,12 +174,13 @@ def process_duplicate_file(self, userId: str = None, trackId: str = None,
             'processed_at': aws_utils._get_current_timestamp()
         }
         
-        # 3. 웹훅으로 완료 알림 전송
+        # 3. 웹훅으로 삭제 완료 알림 전송
         try:
-            from .webhook import send_completion_webhook
-            send_completion_webhook(stemId, result, "SUCCESS")
+            from .webhook import send_duplicate_delete_complete_webhook
+            send_duplicate_delete_complete_webhook(stemId, result)
+            logger.info("중복 파일 삭제 완료 웹훅 전송 완료")
         except Exception as e:
-            logger.warning("웹훅 전송 실패: %s", e)
+            logger.warning("중복 파일 삭제 완료 웹훅 전송 실패: %s", e)
         
         logger.info("중복 파일 처리 완료: stemId=%s", stemId)
         return result
@@ -196,8 +202,9 @@ def process_duplicate_file(self, userId: str = None, trackId: str = None,
 @celery_app.task(name='app.tasks.process_audio_analysis', bind=True)
 def process_audio_analysis(self, userId: str = None, trackId: str = None, 
                           stemId: str = None, filepath: str = None, 
-                          audio_hash: str = None, timestamp: str = None,
-                          original_filename: str = None, num_peaks: int = None):
+                          sessionId: str = None, audio_hash: str = None, 
+                          timestamp: str = None, original_filename: str = None, 
+                          num_peaks: int = None):
     """
     3단계: 오디오 분석 테스크
     오디오 파일을 분석하여 파형 데이터를 생성하고 S3에 저장
@@ -207,6 +214,7 @@ def process_audio_analysis(self, userId: str = None, trackId: str = None,
         trackId: 트랙 ID
         stemId: 스템 ID
         filepath: S3 파일 경로
+        sessionId: 세션 ID
         audio_hash: 오디오 해시값
         timestamp: 타임스탬프
         original_filename: 원본 파일명
@@ -226,6 +234,7 @@ def process_audio_analysis(self, userId: str = None, trackId: str = None,
     logger.info(f"  - trackId: {trackId}")
     logger.info(f"  - stemId: {stemId}")
     logger.info(f"  - filepath: {filepath}")
+    logger.info(f"  - sessionId: {sessionId}")
     logger.info(f"  - audio_hash: {audio_hash}")
     logger.info(f"  - num_peaks: {num_peaks}")
     logger.info("=================================")
@@ -265,6 +274,7 @@ def process_audio_analysis(self, userId: str = None, trackId: str = None,
         final_result = {
             'task_id': task_id,
             'stemId': stemId,
+            'sessionId': sessionId,
             'status': 'success',
             'audio_data_hash': audio_hash,
             'waveform_data_path': waveform_s3_path,
@@ -276,12 +286,28 @@ def process_audio_analysis(self, userId: str = None, trackId: str = None,
             'processed_at': result['processed_at']
         }
         
-        # 7. 웹서버로 완료 알림 전송
+        # 7. 웹서버로 파형 데이터 업데이트 알림 전송
+        try:
+            from .webhook import send_waveform_update_webhook
+            send_waveform_update_webhook(stemId, {
+                'stemId': stemId,
+                'userId': userId,
+                'trackId': trackId,
+                'stem_wave_form_path': waveform_s3_path,
+                'timestamp': final_result['processed_at'],
+                'original_filename': original_filename
+            })
+            logger.info("파형 데이터 업데이트 웹훅 전송 완료")
+        except Exception as e:
+            logger.warning("파형 데이터 업데이트 웹훅 전송 실패: %s", e)
+        
+        # 8. 완료 알림 전송 (기존 completion 웹훅도 유지)
         try:
             from .webhook import send_completion_webhook
             send_completion_webhook(stemId, final_result, "SUCCESS")
+            logger.info("오디오 분석 완료 웹훅 전송 완료")
         except Exception as e:
-            logger.warning("웹훅 전송 실패: %s", e)
+            logger.warning("오디오 분석 완료 웹훅 전송 실패: %s", e)
         
         logger.info("오디오 분석 완료: stemId=%s", stemId)
         return final_result
@@ -294,6 +320,7 @@ def process_audio_analysis(self, userId: str = None, trackId: str = None,
             from .webhook import send_completion_webhook
             error_result = {
                 'stemId': stemId,
+                'sessionId': sessionId,
                 'error_message': str(e),
                 'error_code': type(e).__name__,
                 'timestamp': aws_utils._get_current_timestamp()
