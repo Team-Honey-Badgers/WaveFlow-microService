@@ -6,8 +6,6 @@ S3 파일 다운로드/업로드/삭제 및 SQS 메시지 전송 기능을 제�
 import json
 import logging
 import boto3
-import tempfile
-import os
 from botocore.exceptions import ClientError, NoCredentialsError
 
 logger = logging.getLogger(__name__)
@@ -120,34 +118,6 @@ class AWSUtils:
             logger.error("예상치 못한 오류 발생: %s", e)
             return False
     
-    def upload_json_to_s3(self, data: dict, s3_path: str) -> str:
-        """
-        JSON 데이터를 S3에 업로드합니다.
-        
-        Args:
-            data: 업로드할 JSON 데이터
-            s3_path: S3 저장 경로
-            
-        Returns:
-            str: 업로드된 파일의 S3 URL (실패 시 None)
-        """
-        try:
-            json_str = json.dumps(data, ensure_ascii=False, indent=2)
-            
-            self.s3_client.put_object(
-                Bucket=self.config.S3_BUCKET_NAME,
-                Key=s3_path,
-                Body=json_str.encode('utf-8'),
-                ContentType='application/json'
-            )
-            
-            s3_url = f"https://{self.config.S3_BUCKET_NAME}.s3.{self.config.AWS_REGION}.amazonaws.com/{s3_path}"
-            logger.info("JSON 데이터 S3 업로드 완료: %s", s3_url)
-            return s3_url
-        except Exception as e:
-            logger.error("JSON 데이터 S3 업로드 실패: %s", e)
-            return None
-    
     # 웹훅 방식으로 처리하므로 SQS 결과 전송 불필요
     
     def _get_current_timestamp(self) -> str:
@@ -156,76 +126,4 @@ class AWSUtils:
         return datetime.utcnow().isoformat() + 'Z'
 
 # 전역 인스턴스
-aws_utils = AWSUtils()
-
-# 함수형 인터페이스 (main.py에서 사용하기 위함)
-def download_from_s3(bucket_name: str, s3_path: str) -> str:
-    """
-    S3에서 파일을 임시 디렉토리에 다운로드하고 로컬 경로를 반환합니다.
-    
-    Args:
-        bucket_name: S3 버킷 이름
-        s3_path: S3 객체 경로
-        
-    Returns:
-        str: 다운로드된 로컬 파일 경로 (실패 시 None)
-    """
-    try:
-        # 임시 파일 생성
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
-        temp_path = temp_file.name
-        temp_file.close()
-        
-        # S3에서 다운로드
-        success = aws_utils.download_from_s3(s3_path, temp_path)
-        
-        if success:
-            return temp_path
-        else:
-            # 실패 시 임시 파일 정리
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            return None
-            
-    except Exception as e:
-        logger.error("S3 다운로드 함수형 인터페이스 오류: %s", e)
-        return None
-
-def upload_to_s3(bucket_name: str, s3_path: str, data, content_type: str = 'application/octet-stream') -> str:
-    """
-    데이터를 S3에 업로드합니다.
-    
-    Args:
-        bucket_name: S3 버킷 이름
-        s3_path: S3 저장 경로
-        data: 업로드할 데이터 (dict이면 JSON으로 변환)
-        content_type: 콘텐츠 타입
-        
-    Returns:
-        str: 업로드된 파일의 S3 URL (실패 시 None)
-    """
-    try:
-        if isinstance(data, dict) and content_type == 'application/json':
-            # JSON 데이터 업로드
-            return aws_utils.upload_json_to_s3(data, s3_path)
-        else:
-            # 일반 파일 업로드 (현재는 JSON만 지원)
-            logger.warning("일반 파일 업로드는 현재 지원되지 않습니다.")
-            return None
-            
-    except Exception as e:
-        logger.error("S3 업로드 함수형 인터페이스 오류: %s", e)
-        return None
-
-def delete_from_s3(bucket_name: str, s3_path: str) -> bool:
-    """
-    S3에서 파일을 삭제합니다.
-    
-    Args:
-        bucket_name: S3 버킷 이름 (호환성을 위해 받지만 사용하지 않음)
-        s3_path: S3 객체 경로
-        
-    Returns:
-        bool: 삭제 성공 여부
-    """
-    return aws_utils.delete_from_s3(s3_path) 
+aws_utils = AWSUtils() 
