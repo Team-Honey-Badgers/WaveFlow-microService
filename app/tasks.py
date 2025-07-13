@@ -423,6 +423,130 @@ def health_check(self):
         }
 
 
+@celery_app.task(name='app.tasks.mix_stems_and_upload', bind=True)
+def mix_stems_and_upload(self, stem_paths: list = None, stageId: str = None):
+    """
+    여러 stem 파일들을 동시재생하여 하나의 WAV 파일로 믹스하고 S3에 업로드하는 태스크
+    
+    Args:
+        stem_paths: 믹스할 stem 파일들의 S3 경로 리스트
+        stageId: 스테이지 ID
+        
+    Returns:
+        dict: 처리 결과
+    """
+    task_id = self.request.id
+    local_temp_files = []
+    mixed_file_path = None
+    
+    logger.info("====== Stem 믹스 및 업로드 태스크 시작 ======")
+    logger.info(f"Task ID: {task_id}")
+    logger.info(f"입력 파라미터:")
+    logger.info(f"  - stem_paths: {stem_paths}")
+    logger.info(f"  - stageId: {stageId}")
+    logger.info("==========================================")
+    
+    try:
+        # 입력 검증
+        if not stem_paths or not isinstance(stem_paths, list):
+            raise ValueError("stem_paths는 비어있지 않은 리스트여야 합니다.")
+        
+        if not stageId:
+            raise ValueError("stageId는 필수 파라미터입니다.")
+        
+        # 1. 모든 stem 파일들을 S3에서 다운로드
+        logger.info(f"S3에서 {len(stem_paths)}개의 stem 파일 다운로드 시작")
+        
+        for i, stem_path in enumerate(stem_paths):
+            logger.info(f"파일 {i+1}/{len(stem_paths)} 다운로드 중: {stem_path}")
+            
+            # 임시 파일 생성
+            file_ext = os.path.splitext(stem_path)[1] or '.wav'
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
+                local_temp_path = tmp_file.name
+            
+            # S3에서 다운로드
+            if not aws_utils.download_from_s3(stem_path, local_temp_path):
+                raise Exception(f"S3 파일 다운로드 실패: {stem_path}")
+            
+            local_temp_files.append(local_temp_path)
+            logger.info(f"다운로드 완료: {stem_path} -> {local_temp_path}")
+        
+        # 2. 다운로드된 파일들을 믹스
+        logger.info("다운로드된 stem 파일들을 믹스 시작")
+        
+        # 믹스된 파일을 저장할 임시 경로 생성
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as mixed_tmp_file:
+            mixed_file_path = mixed_tmp_file.name
+        
+        # AudioProcessor의 정적 메서드로 믹스 수행
+        from .audio_processor import AudioProcessor
+        if not AudioProcessor.mix_audio_files(local_temp_files, mixed_file_path):
+            raise Exception("오디오 파일 믹스 실패")
+        
+        logger.info("오디오 믹스 완료")
+        
+        # 3. 믹스된 파일을 S3에 업로드
+        logger.info("믹스된 파일을 S3에 업로드 시작")
+        
+        # S3 업로드 경로 생성 (stages/{stageId}/mixed.wav)
+        s3_upload_path = f"stages/{stageId}/mixed.wav"
+        
+        if not aws_utils.upload_to_s3(mixed_file_path, s3_upload_path):
+            raise Exception("S3 업로드 실패")
+        
+        logger.info(f"S3 업로드 완료: {s3_upload_path}")
+        
+        # 4. 결과 데이터 준비
+        result = {
+            'task_id': task_id,
+            'stageId': stageId,
+            'mixed_file_path': s3_upload_path,
+            'stem_count': len(stem_paths),
+            'stem_paths': stem_paths,
+            'status': 'completed',
+            'processed_at': aws_utils._get_current_timestamp()
+        }
+        
+        # 5. 웹훅으로 완료 알림 전송
+        logger.info("웹훅으로 완료 알림 전송")
+        try:
+            from .webhook import send_stem_mix_webhook
+            send_stem_mix_webhook(stageId, result)
+            logger.info("웹훅 전송 완료")
+        except Exception as e:
+            logger.error("웹훅 전송 실패: %s", e)
+            # 웹훅 실패는 전체 태스크 실패로 처리하지 않음
+        
+        logger.info("Stem 믹스 및 업로드 완료: stageId=%s, path=%s", stageId, s3_upload_path)
+        return result
+        
+    except Exception as e:
+        logger.error("Stem 믹스 및 업로드 실패: stageId=%s, error=%s", stageId, str(e))
+        
+        # 재시도 로직
+        if self.request.retries < self.max_retries:
+            logger.info("작업 재시도 예약: stageId=%s, retry=%d/%d", 
+                       stageId, self.request.retries + 1, self.max_retries)
+            countdown = min(60 * (2 ** self.request.retries), 300)
+            raise self.retry(exc=e, countdown=countdown)
+        
+        logger.error("최대 재시도 횟수 초과: stageId=%s", stageId)
+        raise
+        
+    finally:
+        # 임시 파일들 정리 (성공/실패와 관계없이 실행)
+        all_temp_files = local_temp_files + ([mixed_file_path] if mixed_file_path else [])
+        
+        for temp_file in all_temp_files:
+            if temp_file and os.path.exists(temp_file):
+                try:
+                    os.unlink(temp_file)
+                    logger.info("임시 파일 정리 완료: %s", temp_file)
+                except Exception as cleanup_error:
+                    logger.warning("임시 파일 정리 실패: %s - %s", temp_file, cleanup_error)
+
+
 @celery_app.task(name='cleanup_temp_files', bind=True)
 def cleanup_temp_files(self):
     """

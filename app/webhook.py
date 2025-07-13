@@ -70,3 +70,38 @@ def send_completion_webhook(stem_id: str, result: Dict[str, Any], status: str = 
     except Exception as e:
         print(f"완료 웹훅 전송 실패: {e}")
         raise
+
+def send_stem_mix_webhook(stage_id: str, result: Dict[str, Any]):
+    """Stem 믹스 완료 시 웹서버로 webhook 전송"""
+    config = get_config()
+    webhook_url = config.get('WEBHOOK_URL')
+    
+    if not webhook_url:
+        print("WEBHOOK_URL이 설정되지 않았습니다.")
+        return
+    
+    # Stem 믹스 완료 웹훅 전용 엔드포인트
+    stem_mix_webhook_url = f"{webhook_url}/stem-mix-complete"
+    
+    payload = {
+        "stageId": stage_id,
+        "status": "completed",
+        "mixed_file_path": result.get('mixed_file_path'),
+        "stem_count": result.get('stem_count'),
+        "stem_paths": result.get('stem_paths'),
+        "task_id": result.get('task_id'),
+        "processed_at": result.get('processed_at')
+    }
+    
+    try:
+        response = requests.post(
+            stem_mix_webhook_url,
+            json=payload,
+            timeout=30,
+            headers={'Content-Type': 'application/json'}
+        )
+        response.raise_for_status()
+        print(f"Stem 믹스 웹훅 전송 성공: {stage_id}")
+    except Exception as e:
+        print(f"Stem 믹스 웹훅 전송 실패: {e}")
+        raise

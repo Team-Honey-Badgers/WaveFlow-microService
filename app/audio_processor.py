@@ -11,6 +11,7 @@ import tempfile
 import magic
 import librosa
 import numpy as np
+import soundfile as sf
 from typing import List, Tuple, Optional
 from . import config
 
@@ -121,7 +122,6 @@ class AudioProcessor:
             
             # 대안 1: soundfile 직접 사용 (더 안전함)
             try:
-                import soundfile as sf
                 logger.info("soundfile 라이브러리 사용하여 로드 시도")
                 
                 # soundfile로 로드
@@ -416,4 +416,115 @@ class AudioProcessor:
     def _get_current_timestamp(self) -> str:
         """현재 타임스탬프를 ISO 형식으로 반환합니다."""
         from datetime import datetime
-        return datetime.utcnow().isoformat() + 'Z' 
+        return datetime.utcnow().isoformat() + 'Z'
+
+    @staticmethod
+    def mix_audio_files(file_paths: List[str], output_path: str) -> bool:
+        """
+        여러 오디오 파일들을 동시재생(믹스)하여 하나의 WAV 파일로 저장합니다.
+        
+        Args:
+            file_paths: 믹스할 오디오 파일들의 경로 리스트
+            output_path: 출력 파일 경로 (WAV 형식)
+            
+        Returns:
+            bool: 믹스 성공 여부
+        """
+        try:
+            if not file_paths:
+                logger.error("믹스할 파일이 없습니다.")
+                return False
+                
+            logger.info(f"오디오 파일 믹스 시작: {len(file_paths)}개 파일")
+            
+            # 각 파일을 로드하여 데이터와 샘플 레이트 수집
+            audio_data_list = []
+            sample_rates = []
+            
+            for i, file_path in enumerate(file_paths):
+                logger.info(f"파일 {i+1}/{len(file_paths)} 로드 중: {file_path}")
+                
+                try:
+                    # soundfile 우선 사용
+                    audio_data, sample_rate = sf.read(file_path)
+                    
+                    # 스테레오를 모노로 변환
+                    if len(audio_data.shape) > 1:
+                        audio_data = np.mean(audio_data, axis=1)
+                    
+                    audio_data_list.append(audio_data)
+                    sample_rates.append(sample_rate)
+                    
+                    logger.info(f"파일 로드 완료: 샘플 레이트={sample_rate}, 길이={len(audio_data)}")
+                    
+                except Exception as sf_error:
+                    logger.warning(f"soundfile로 로드 실패, librosa 시도: {sf_error}")
+                    
+                    # librosa 사용
+                    audio_data, sample_rate = librosa.load(file_path, sr=None, mono=True)
+                    audio_data_list.append(audio_data)
+                    sample_rates.append(sample_rate)
+                    
+                    logger.info(f"librosa로 파일 로드 완료: 샘플 레이트={sample_rate}, 길이={len(audio_data)}")
+            
+            # 모든 파일의 샘플 레이트가 동일한지 확인
+            target_sample_rate = sample_rates[0]
+            if not all(sr == target_sample_rate for sr in sample_rates):
+                logger.warning("샘플 레이트가 다른 파일들이 있습니다. 리샘플링 수행")
+                
+                # 가장 높은 샘플 레이트로 통일
+                target_sample_rate = max(sample_rates)
+                
+                for i, (audio_data, sample_rate) in enumerate(zip(audio_data_list, sample_rates)):
+                    if sample_rate != target_sample_rate:
+                        logger.info(f"파일 {i+1} 리샘플링: {sample_rate} -> {target_sample_rate}")
+                        audio_data_list[i] = librosa.resample(
+                            audio_data, 
+                            orig_sr=sample_rate, 
+                            target_sr=target_sample_rate
+                        )
+            
+            # 모든 파일을 같은 길이로 맞춤 (가장 긴 파일 기준)
+            max_length = max(len(audio_data) for audio_data in audio_data_list)
+            logger.info(f"최대 길이: {max_length} 샘플")
+            
+            # 패딩 또는 자르기
+            padded_audio_list = []
+            for i, audio_data in enumerate(audio_data_list):
+                if len(audio_data) < max_length:
+                    # 짧은 파일은 0으로 패딩
+                    padded_audio = np.pad(audio_data, (0, max_length - len(audio_data)), mode='constant')
+                    logger.info(f"파일 {i+1} 패딩: {len(audio_data)} -> {max_length}")
+                else:
+                    # 긴 파일은 자르기
+                    padded_audio = audio_data[:max_length]
+                    if len(audio_data) > max_length:
+                        logger.info(f"파일 {i+1} 자르기: {len(audio_data)} -> {max_length}")
+                
+                padded_audio_list.append(padded_audio)
+            
+            # 모든 오디오 데이터를 합산 (평균 사용하여 클리핑 방지)
+            logger.info("오디오 데이터 믹스 중...")
+            mixed_audio = np.mean(padded_audio_list, axis=0)
+            
+            # 클리핑 방지를 위한 정규화
+            max_value = np.max(np.abs(mixed_audio))
+            if max_value > 1.0:
+                mixed_audio = mixed_audio / max_value
+                logger.info(f"클리핑 방지를 위한 정규화 적용: {max_value:.3f}")
+            
+            # WAV 파일로 저장
+            logger.info(f"믹스된 오디오를 WAV 파일로 저장: {output_path}")
+            sf.write(output_path, mixed_audio, target_sample_rate)
+            
+            # 저장된 파일 크기 확인
+            file_size = os.path.getsize(output_path)
+            duration = len(mixed_audio) / target_sample_rate
+            
+            logger.info(f"믹스 완료: 길이={duration:.2f}초, 크기={file_size/1024/1024:.2f}MB")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"오디오 믹스 실패: {e}")
+            return False 
