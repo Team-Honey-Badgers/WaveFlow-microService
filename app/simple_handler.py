@@ -134,8 +134,8 @@ class SimpleSQSHandler:
     def execute_task(self, task_name, args, kwargs):
         """태스크 실행"""
         try:
-            # 새로운 3단계 워크플로우 태스크들 import
-            from .tasks import generate_hash_and_webhook, process_duplicate_file, process_audio_analysis
+            # 모든 워크플로우 태스크들 import
+            from .tasks import generate_hash_and_webhook, process_duplicate_file, process_audio_analysis, mix_stems_and_upload
             
             # 태스크 이름에 따라 적절한 함수 호출
             if task_name == 'app.tasks.generate_hash_and_webhook':
@@ -146,6 +146,9 @@ class SimpleSQSHandler:
                 return result
             elif task_name == 'app.tasks.process_audio_analysis':
                 result = process_audio_analysis(**kwargs)
+                return result
+            elif task_name == 'app.tasks.mix_stems_and_upload':
+                result = mix_stems_and_upload(**kwargs)
                 return result
             else:
                 logger.warning(f"알 수 없는 태스크: {task_name}")

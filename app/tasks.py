@@ -477,12 +477,45 @@ def mix_stems_and_upload(self, stageId: Optional[str] = None, stem_paths: Option
         if not aws_utils.upload_to_s3(mixed_file_path, s3_mixed_path):
             raise Exception("S3 믹싱 파일 업로드 실패")
         
-        # 6. 결과 구성
+        # 6. 믹싱된 파일의 파형 분석
+        logger.info("믹싱된 파일 파형 분석 시작")
+        waveform_data_path = None
+        
+        try:
+            from .audio_processor import AudioProcessor
+            
+            # 오디오 프로세서로 파형 분석
+            processor = AudioProcessor(mixed_file_path)
+            waveform_json = processor.generate_waveform_json(4000)  # 4000개 피크 생성
+            
+            # 파형 데이터를 S3에 저장
+            waveform_filename = f"waveforms/{stageId}_mixed_waveform_{aws_utils._get_current_timestamp()}.json"
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as waveform_file:
+                waveform_filepath = waveform_file.name
+                waveform_file.write(waveform_json)
+            
+            # S3에 파형 데이터 업로드
+            if aws_utils.upload_to_s3(waveform_filepath, waveform_filename):
+                waveform_data_path = waveform_filename
+                logger.info(f"파형 데이터 S3 업로드 완료: {waveform_filename}")
+            else:
+                logger.warning("파형 데이터 S3 업로드 실패")
+            
+            # 파형 임시 파일 정리
+            if os.path.exists(waveform_filepath):
+                os.unlink(waveform_filepath)
+                
+        except Exception as e:
+            logger.warning(f"파형 분석 실패: {e}")
+            # 파형 분석 실패해도 믹싱 작업은 계속 진행
+        
+        # 7. 결과 구성
         result = {
             'task_id': task_id,
             'stageId': stageId,
             'status': 'SUCCESS',
             'mixed_file_path': s3_mixed_path,
+            'waveform_data_path': waveform_data_path,
             'stem_count': len(stem_paths),
             'stem_paths': stem_paths,
             'processed_at': aws_utils._get_current_timestamp()

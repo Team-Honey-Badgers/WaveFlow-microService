@@ -93,6 +93,7 @@ def send_mixing_webhook(stage_id: str, result: Dict[str, Any], status: str = "SU
         "stageId": stage_id,
         "status": status,
         "mixed_file_path": result.get('mixed_file_path'),
+        "waveform_data_path": result.get('waveform_data_path'),
         "stem_count": result.get('stem_count'),
         "stem_paths": result.get('stem_paths'),
         "task_id": result.get('task_id')
