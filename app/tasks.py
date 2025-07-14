@@ -304,9 +304,10 @@ def process_audio_analysis(self, userId: Optional[str] = None, trackId: Optional
         
         # 파형 데이터 파일 생성
         waveform_filename = f"waveforms/{stemId}_waveform_{aws_utils._get_current_timestamp()}.json"
+        waveform_json = processor.generate_waveform_json(num_peaks)
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as waveform_file:
             waveform_filepath = waveform_file.name
-            waveform_file.write(result['waveform_json'])
+            waveform_file.write(waveform_json)
         
         # S3에 파형 데이터 업로드
         if not aws_utils.upload_to_s3(waveform_filepath, waveform_filename):
