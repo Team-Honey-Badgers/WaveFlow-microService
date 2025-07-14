@@ -224,12 +224,12 @@ celery_app.conf.update(
 # 작업 모듈 자동 검색 설정
 celery_app.autodiscover_tasks(['app'])
 
-    # 태스크 직접 등록 - 자동 검색이 실패할 경우 대비
-    try:
-        from .tasks import generate_hash_and_webhook, process_duplicate_file, process_audio_analysis, mix_stems_and_upload, health_check, cleanup_temp_files
-        logger.info("태스크 직접 import 성공")
-    except ImportError as e:
-        logger.error("태스크 import 실패: %s", e)
+# 태스크 직접 등록 - 자동 검색이 실패할 경우 대비
+try:
+    from .tasks import generate_hash_and_webhook, process_duplicate_file, process_audio_analysis, mix_stems_and_upload, health_check, cleanup_temp_files
+    logger.info("태스크 직접 import 성공")
+except ImportError as e:
+    logger.error("태스크 import 실패: %s", e)
 
 # 태스크 등록 확인
 logger.info("등록된 태스크 목록: %s", list(celery_app.tasks.keys()))
@@ -254,22 +254,20 @@ except Exception as e:
     logger.error("Celery 애플리케이션 설정 실패: %s", e)
     raise
 
-# 커스텀 핸들러 시작 함수
 def start_custom_handler():
-    """Celery 대신 커스텀 핸들러 시작"""
-    if USE_CUSTOM_HANDLER:
-        logger.info("간단한 SQS 핸들러 시작 중...")
+    """커스텀 SQS 핸들러 시작"""
+    try:
+        logger.info("커스텀 SQS 핸들러 시작...")
+        
         from .simple_handler import SimpleSQSHandler
         
-        # 간단한 핸들러 시작
         handler = SimpleSQSHandler(config.SQS_QUEUE_URL, config.AWS_REGION)
-        try:
-            handler.run()
-        except KeyboardInterrupt:
-            logger.info("간단한 핸들러 종료")
-    else:
-        logger.info("표준 Celery 워커 시작")
-        celery_app.start()
+        handler.run()
+        
+    except Exception as e:
+        logger.error("커스텀 핸들러 시작 실패: %s", e)
+        raise
 
 if __name__ == '__main__':
+    # 커스텀 핸들러 시작
     start_custom_handler()
