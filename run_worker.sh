@@ -37,8 +37,9 @@ export PYTHONPATH="${PYTHONPATH}:/usr/src/app"
 echo "임시 파일 정리 중..."
 find /tmp -name "tmp*" -type f -mtime +1 -delete 2>/dev/null || true
 
-# 워커 설정
+# 워커 설정 - EC2 c7i-large 인스턴스 최적화 (2 vCPU, 4GB RAM)
 WORKER_NAME="${WORKER_NAME:-audio-processor-worker}"
+# 동시성 2개로 증가 - 가벼운 작업과 무거운 작업의 밸런스 고려
 CONCURRENCY="${CONCURRENCY:-2}"
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
 

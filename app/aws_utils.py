@@ -120,6 +120,29 @@ class AWSUtils:
     
     # 웹훅 방식으로 처리하므로 SQS 결과 전송 불필요
     
+    def test_connections(self) -> dict:
+        """AWS 서비스 연결 테스트"""
+        result = {}
+        
+        # S3 연결 테스트
+        try:
+            self.s3_client.head_bucket(Bucket=self.config.S3_BUCKET_NAME)
+            result['s3_connection'] = 'ok'
+        except Exception as e:
+            result['s3_connection'] = f'error: {str(e)}'
+        
+        # SQS 연결 테스트
+        try:
+            self.sqs_client.get_queue_attributes(
+                QueueUrl=self.config.SQS_QUEUE_URL,
+                AttributeNames=['QueueArn']
+            )
+            result['sqs_connection'] = 'ok'
+        except Exception as e:
+            result['sqs_connection'] = f'error: {str(e)}'
+        
+        return result
+    
     def _get_current_timestamp(self) -> str:
         """현재 타임스탬프를 ISO 형식으로 반환합니다."""
         from datetime import datetime

@@ -29,7 +29,7 @@ def handle_custom_message(body, message):
         
         # 태스크 이름 결정
         task_name = data.get('task', 'app.tasks.generate_hash_and_webhook')
-        task_id = data.get('stemId', data.get('stageId', data.get('id', 'unknown')))
+        task_id = data.get('stemId', data.get('id', 'unknown'))
         
         # 태스크 실행
         result = execute_task(task_name, data, task_id)
@@ -48,7 +48,7 @@ def handle_custom_message(body, message):
 def execute_task(task_name, data, task_id):
     """태스크 실행"""
     try:
-        # 새로운 3단계 워크플로우 태스크들 import
+        # 새로운 4단계 워크플로우 태스크들 import
         from .tasks import generate_hash_and_webhook, process_duplicate_file, process_audio_analysis, mix_stems_and_upload
         
         # 태스크 이름에 따라 적절한 함수 호출

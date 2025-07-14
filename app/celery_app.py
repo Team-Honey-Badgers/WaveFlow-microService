@@ -153,9 +153,9 @@ celery_app.conf.update(
     task_default_retry_delay=config.RETRY_DELAY,
     task_max_retries=config.MAX_RETRIES,
     
-    # 워커 설정
+    # 워커 설정 - EC2 c7i-large 최적화 (2 vCPU, 4GB RAM)
     worker_prefetch_multiplier=1,
-    worker_max_tasks_per_child=1000,
+    worker_max_tasks_per_child=100,  # 2개 워커로 증가했으므로 태스크 수 증가
     
     # 결과 만료 설정
     result_expires=config.CELERY_RESULT_EXPIRES,
@@ -203,6 +203,9 @@ celery_app.conf.update(
         },
         'app.tasks.process_audio_analysis': {
             'queue': 'waveflow-audio-process-queue-honeybadgers'
+        },
+        'app.tasks.mix_stems_and_upload': {
+            'queue': 'waveflow-audio-process-queue-honeybadgers'
         }
     },
     
@@ -221,12 +224,12 @@ celery_app.conf.update(
 # 작업 모듈 자동 검색 설정
 celery_app.autodiscover_tasks(['app'])
 
-# 태스크 직접 등록 - 자동 검색이 실패할 경우 대비
-try:
-    from .tasks import generate_hash_and_webhook, process_duplicate_file, process_audio_analysis, health_check, cleanup_temp_files
-    logger.info("태스크 직접 import 성공")
-except ImportError as e:
-    logger.error("태스크 import 실패: %s", e)
+    # 태스크 직접 등록 - 자동 검색이 실패할 경우 대비
+    try:
+        from .tasks import generate_hash_and_webhook, process_duplicate_file, process_audio_analysis, mix_stems_and_upload, health_check, cleanup_temp_files
+        logger.info("태스크 직접 import 성공")
+    except ImportError as e:
+        logger.error("태스크 import 실패: %s", e)
 
 # 태스크 등록 확인
 logger.info("등록된 태스크 목록: %s", list(celery_app.tasks.keys()))

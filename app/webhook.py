@@ -20,6 +20,7 @@ def send_hash_webhook(stem_id: str, result: Dict[str, Any]):
         "userId": result.get('userId'),
         "trackId": result.get('trackId'),
         "filepath": result.get('filepath'),
+        "stageId": result.get('stageId'),
         "audio_hash": result.get('audio_hash'),
         "timestamp": result.get('timestamp'),
         "original_filename": result.get('original_filename'),
@@ -40,7 +41,7 @@ def send_hash_webhook(stem_id: str, result: Dict[str, Any]):
         raise
 
 def send_completion_webhook(stem_id: str, result: Dict[str, Any], status: str = "SUCCESS"):
-    """작업 완료 시 웹서버로 webhook 전송"""
+    """오디오 분석 완료 시 웹서버로 webhook 전송"""
     config = get_config()
     webhook_url = config.get('WEBHOOK_URL')
     
@@ -53,9 +54,14 @@ def send_completion_webhook(stem_id: str, result: Dict[str, Any], status: str = 
     
     payload = {
         "stemId": stem_id,
+        "userId": result.get('userId'),
+        "trackId": result.get('trackId'),
         "status": status,
-        "result": result,
-        "timestamp": result.get('processed_at')
+        "result": result.get('result'),
+        "timestamp": result.get('timestamp'),
+        "original_filename": result.get('original_filename'),
+        "processing_time": result.get('processing_time'),
+        "audio_wave_path": result.get('audio_wave_path')
     }
     
     try:
@@ -71,8 +77,8 @@ def send_completion_webhook(stem_id: str, result: Dict[str, Any], status: str = 
         print(f"완료 웹훅 전송 실패: {e}")
         raise
 
-def send_stem_mix_webhook(stage_id: str, result: Dict[str, Any]):
-    """Stem 믹스 완료 시 웹서버로 webhook 전송"""
+def send_mixing_webhook(stage_id: str, result: Dict[str, Any], status: str = "SUCCESS"):
+    """믹싱 작업 완료 시 웹서버로 webhook 전송"""
     config = get_config()
     webhook_url = config.get('WEBHOOK_URL')
     
@@ -80,28 +86,27 @@ def send_stem_mix_webhook(stage_id: str, result: Dict[str, Any]):
         print("WEBHOOK_URL이 설정되지 않았습니다.")
         return
     
-    # Stem 믹스 완료 웹훅 전용 엔드포인트
-    stem_mix_webhook_url = f"{webhook_url}/stem-mix-complete"
+    # 믹싱 완료 웹훅 전용 엔드포인트
+    mixing_webhook_url = f"{webhook_url}/mixing-complete"
     
     payload = {
         "stageId": stage_id,
-        "status": "completed",
+        "status": status,
         "mixed_file_path": result.get('mixed_file_path'),
         "stem_count": result.get('stem_count'),
         "stem_paths": result.get('stem_paths'),
-        "task_id": result.get('task_id'),
-        "processed_at": result.get('processed_at')
+        "task_id": result.get('task_id')
     }
     
     try:
         response = requests.post(
-            stem_mix_webhook_url,
+            mixing_webhook_url,
             json=payload,
             timeout=30,
             headers={'Content-Type': 'application/json'}
         )
         response.raise_for_status()
-        print(f"Stem 믹스 웹훅 전송 성공: {stage_id}")
+        print(f"믹싱 웹훅 전송 성공: {stage_id}")
     except Exception as e:
-        print(f"Stem 믹스 웹훅 전송 실패: {e}")
+        print(f"믹싱 웹훅 전송 실패: {e}")
         raise

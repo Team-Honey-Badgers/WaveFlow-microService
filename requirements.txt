@@ -17,4 +17,5 @@ moto==4.2.14
 
 # 추가 유틸리티
 requests==2.31.0
-kombu[sqs]==5.3.4 
+kombu[sqs]==5.3.4
+psutil==5.9.6 
