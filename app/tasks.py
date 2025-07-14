@@ -414,13 +414,21 @@ def mix_stems_and_upload(self, stageId: Optional[str] = None, stem_paths: Option
             if not aws_utils.download_from_s3(stem_path, local_path):
                 raise Exception(f"스템 파일 다운로드 실패: {stem_path}")
             
-            # 오디오 데이터 로드
+            # 오디오 데이터 로드 (AudioProcessor 사용)
             try:
-                audio_data, sr = librosa.load(local_path, sr=None)
+                from .audio_processor import AudioProcessor
+                
+                # AudioProcessor로 오디오 로드
+                processor = AudioProcessor(local_path)
+                processor.load_audio_data()
+                audio_data = processor.audio_data
+                sr = processor.sample_rate
+                
                 if sample_rate is None:
                     sample_rate = sr
                 elif sample_rate != sr:
                     # 샘플레이트가 다른 경우 리샘플링
+                    import librosa
                     audio_data = librosa.resample(audio_data, orig_sr=sr, target_sr=sample_rate)
                     logger.info(f"리샘플링 수행: {sr} -> {sample_rate}")
                 
@@ -435,7 +443,7 @@ def mix_stems_and_upload(self, stageId: Optional[str] = None, stem_paths: Option
         logger.info("오디오 믹싱 시작")
         
         # 모든 오디오 데이터의 길이를 동일하게 맞춤
-        max_length = max(len(audio) for audio in audio_data_list)
+        max_length = max(len(audio) for audio in audio_data_list if audio is not None)
         
         # 패딩 및 믹싱
         mixed_audio = np.zeros(max_length, dtype=np.float32)
