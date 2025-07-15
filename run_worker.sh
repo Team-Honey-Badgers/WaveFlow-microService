@@ -120,23 +120,53 @@ start_worker() {
     local worker_id=$1
     echo "워커 #${worker_id} 시작 중..."
     
+    # Python 스크립트 실행 (에러 처리 추가)
     python -c "
+import sys
 import os
-os.environ['WORKER_ID'] = '${worker_id}'
-from app.celery_app import start_custom_handler
-start_custom_handler()
+import traceback
+
+try:
+    print(f'워커 #{worker_id}: Python 스크립트 시작')
+    os.environ['WORKER_ID'] = '${worker_id}'
+    print(f'워커 #{worker_id}: WORKER_ID 환경 변수 설정 완료')
+    
+    from app.celery_app import start_custom_handler
+    print(f'워커 #{worker_id}: start_custom_handler import 완료')
+    
+    start_custom_handler()
+    print(f'워커 #{worker_id}: start_custom_handler 호출 완료')
+    
+except Exception as e:
+    print(f'워커 #{worker_id}: 에러 발생: {e}')
+    print(f'워커 #{worker_id}: 트레이스백:')
+    traceback.print_exc()
+    sys.exit(1)
 " &
     
     local pid=$!
     WORKER_PIDS+=($pid)
     echo "워커 #${worker_id} 시작됨 (PID: $pid)"
-    return $pid
+    
+    # 워커 시작 후 잠시 대기하여 즉시 실패하는지 확인
+    sleep 1
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "❌ 워커 #${worker_id}가 즉시 실패했습니다 (PID: $pid)"
+        return 1
+    else
+        echo "✅ 워커 #${worker_id} 정상 시작 확인됨 (PID: $pid)"
+        return 0
+    fi
 }
 
-# 모든 워커 프로세스 시작
-for i in $(seq 1 $WORKER_PROCESSES); do
+# 모든 워커 프로세스 시작 (seq 대신 안전한 방법 사용)
+echo "워커 프로세스 시작 시도: $WORKER_PROCESSES 개"
+i=1
+while [ $i -le $WORKER_PROCESSES ]; do
+    echo "워커 $i/$WORKER_PROCESSES 시작 시도 중..."
     start_worker $i
     sleep 2  # 각 워커 시작 간격
+    i=$((i + 1))
 done
 
 echo "모든 워커 프로세스 시작 완료"
