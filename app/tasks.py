@@ -369,14 +369,15 @@ def process_audio_analysis(self, userId: Optional[str] = None, trackId: Optional
 
 
 @celery_app.task(name='app.tasks.mix_stems_and_upload', bind=True)
-def mix_stems_and_upload(self, stageId: Optional[str] = None, stem_paths: Optional[List[str]] = None):
+def mix_stems_and_upload(self, stageId: Optional[str] = None, upstreamId: Optional[str] = None, stem_paths: Optional[List[str]] = None, ):
     """
     믹싱 작업 테스크
     여러 스템 파일들을 다운로드하여 믹싱한 후 S3에 업로드
     
     Args:
         stageId: 스테이지 ID
-        stem_paths: 스템 파일 경로 리스트
+        upstreamId: 업스트림 ID
+        stem_paths: 스템 파일 경로 리스트트
         
     Returns:
         dict: 처리 결과
@@ -389,6 +390,7 @@ def mix_stems_and_upload(self, stageId: Optional[str] = None, stem_paths: Option
     logger.info(f"Task ID: {task_id}")
     logger.info(f"입력 파라미터:")
     logger.info(f"  - stageId: {stageId}")
+    logger.info(f"  - upstreamId: {upstreamId}")
     logger.info(f"  - stem_paths: {stem_paths}")
     logger.info(f"  - stem_count: {len(stem_paths) if stem_paths else 0}")
     logger.info("================================")
@@ -521,6 +523,7 @@ def mix_stems_and_upload(self, stageId: Optional[str] = None, stem_paths: Option
         result = {
             'task_id': task_id,
             'stageId': stageId,
+            'upstreamId': upstreamId,
             'status': 'SUCCESS',
             'mixed_file_path': s3_mixed_path,
             'waveform_data_path': waveform_data_path,
@@ -537,20 +540,20 @@ def mix_stems_and_upload(self, stageId: Optional[str] = None, stem_paths: Option
             except Exception as e:
                 logger.warning("웹훅 전송 실패: %s", e)
         
-        logger.info("믹싱 작업 완료: stageId=%s, mixed_file=%s", stageId, s3_mixed_path)
+        logger.info("믹싱 작업 완료: stageId=%s, upstreamId=%s, mixed_file=%s", stageId, upstreamId, s3_mixed_path)
         return result
         
     except Exception as e:
-        logger.error("믹싱 작업 실패: stageId=%s, error=%s", stageId, str(e))
+        logger.error("믹싱 작업 실패: stageId=%s, upstreamId=%s, error=%s", stageId, upstreamId, str(e))
         
         # 재시도 로직
         if self.request.retries < self.max_retries:
-            logger.info("작업 재시도 예약: stageId=%s, retry=%d/%d", 
-                       stageId, self.request.retries + 1, self.max_retries)
+            logger.info("작업 재시도 예약: stageId=%s, upstreamId=%s, retry=%d/%d", 
+                       stageId, upstreamId, self.request.retries + 1, self.max_retries)
             countdown = min(60 * (2 ** self.request.retries), 300)
             raise self.retry(exc=e, countdown=countdown)
         
-        logger.error("최대 재시도 횟수 초과: stageId=%s", stageId)
+        logger.error("최대 재시도 횟수 초과: stageId=%s, upstreamId=%s", stageId, upstreamId)
         raise
         
     finally:
