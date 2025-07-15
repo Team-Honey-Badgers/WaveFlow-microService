@@ -37,10 +37,12 @@ export PYTHONPATH="${PYTHONPATH}:/usr/src/app"
 echo "임시 파일 정리 중..."
 find /tmp -name "tmp*" -type f -mtime +1 -delete 2>/dev/null || true
 
-# 워커 설정 - EC2 c7i-large 인스턴스 최적화 (2 vCPU, 4GB RAM)
+# 워커 설정 - EC2 c7-large 인스턴스 최적화 (2 vCPU, 4GB RAM)
 WORKER_NAME="${WORKER_NAME:-audio-processor-worker}"
-# 동시성 2개로 증가 - 가벼운 작업과 무거운 작업의 밸런스 고려
-CONCURRENCY="${CONCURRENCY:-2}"
+# 동시성 4개로 증가 - threads pool과 함께 최적화
+CONCURRENCY="${CONCURRENCY:-4}"
+# 워커 프로세스 수 - 2 vCPU 활용
+WORKER_PROCESSES="${WORKER_PROCESSES:-2}"
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
 
 # 동적으로 큐 이름 설정 (SQS URL에서 추출)
@@ -55,6 +57,7 @@ fi
 
 echo "워커 설정:"
 echo "  - 워커 이름: $WORKER_NAME"
+echo "  - 워커 프로세스 수: $WORKER_PROCESSES"
 echo "  - 동시 실행 수: $CONCURRENCY"
 echo "  - 로그 레벨: $LOG_LEVEL"
 echo "  - 큐 이름: $QUEUE_NAME"
@@ -65,17 +68,26 @@ cleanup() {
     echo "워커 종료 신호 받음..."
     echo "진행 중인 작업 완료 대기 중..."
     
-    # 커스텀 핸들러에 종료 신호 전송
-    if [ ! -z "$CUSTOM_PID" ]; then
-        kill -TERM "$CUSTOM_PID" 2>/dev/null || true
-        wait "$CUSTOM_PID" 2>/dev/null || true
-    fi
+    # 모든 워커 프로세스에 종료 신호 전송
+    for pid in "${WORKER_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "워커 프로세스 종료 중... (PID: $pid)"
+            kill -TERM "$pid" 2>/dev/null || true
+        fi
+    done
+    
+    # 모든 워커 프로세스 종료 대기
+    for pid in "${WORKER_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+        fi
+    done
     
     # 임시 파일 정리
     echo "임시 파일 정리 중..."
     find /tmp -name "tmp*" -type f -delete 2>/dev/null || true
     
-    echo "워커 종료 완료"
+    echo "모든 워커 종료 완료"
     exit 0
 }
 
@@ -96,40 +108,88 @@ except Exception as e:
     sys.exit(1)
 "
 
-# 커스텀 핸들러 직접 시작
-echo "커스텀 SQS 핸들러 시작 중..."
+# 다중 워커 프로세스 시작
+echo "다중 워커 프로세스 시작 중..."
 export USE_CUSTOM_HANDLER=true
 
-# Python 커스텀 핸들러 실행
-python -c "
+# 워커 PID 배열
+WORKER_PIDS=()
+
+# 워커 프로세스 시작 함수
+start_worker() {
+    local worker_id=$1
+    echo "워커 #${worker_id} 시작 중..."
+    
+    python -c "
+import os
+os.environ['WORKER_ID'] = '${worker_id}'
 from app.celery_app import start_custom_handler
 start_custom_handler()
 " &
+    
+    local pid=$!
+    WORKER_PIDS+=($pid)
+    echo "워커 #${worker_id} 시작됨 (PID: $pid)"
+    return $pid
+}
 
-CUSTOM_PID=$!
-echo "커스텀 핸들러 시작됨 (PID: $CUSTOM_PID)"
+# 모든 워커 프로세스 시작
+for i in $(seq 1 $WORKER_PROCESSES); do
+    start_worker $i
+    sleep 2  # 각 워커 시작 간격
+done
 
-# 핸들러 시작 확인
+echo "모든 워커 프로세스 시작 완료"
+
+# 모든 워커 프로세스 시작 확인
 sleep 5
-if ! kill -0 "$CUSTOM_PID" 2>/dev/null; then
-    echo "❌ 커스텀 핸들러 시작 실패"
+failed_workers=0
+for pid in "${WORKER_PIDS[@]}"; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "❌ 워커 프로세스 시작 실패 (PID: $pid)"
+        failed_workers=$((failed_workers + 1))
+    fi
+done
+
+if [ $failed_workers -gt 0 ]; then
+    echo "❌ $failed_workers 개의 워커 프로세스 시작 실패"
     exit 1
 else
-    echo "✅ 커스텀 핸들러 시작 완료"
+    echo "✅ 모든 워커 프로세스 시작 완료"
 fi
 
 # 주기적 헬스 체크 및 임시 파일 정리
 while true; do
-    sleep 300  # 5분마다 실행
+    sleep 180  # 3분마다 실행 (더 빈번한 체크)
     
-    # 커스텀 핸들러 프로세스 확인
-    if ! kill -0 "$CUSTOM_PID" 2>/dev/null; then
-        echo "❌ 커스텀 핸들러 프로세스가 종료되었습니다."
+    # 모든 워커 프로세스 상태 확인
+    failed_workers=0
+    active_workers=0
+    
+    for pid in "${WORKER_PIDS[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            active_workers=$((active_workers + 1))
+        else
+            failed_workers=$((failed_workers + 1))
+            echo "❌ 워커 프로세스 종료 감지됨 (PID: $pid)"
+        fi
+    done
+    
+    # 절반 이상의 워커가 실패하면 전체 재시작
+    if [ $failed_workers -gt $((WORKER_PROCESSES / 2)) ]; then
+        echo "❌ 너무 많은 워커 프로세스가 실패했습니다. ($failed_workers/$WORKER_PROCESSES)"
         exit 1
+    fi
+    
+    # 실패한 워커가 있으면 재시작
+    if [ $failed_workers -gt 0 ]; then
+        echo "⚠️  $failed_workers 개의 워커 프로세스 재시작 중..."
+        # 간단한 재시작 로직: 스크립트 자체를 재시작
+        exec "$0"
     fi
     
     # 임시 파일 정리 (1시간 이상 된 파일)
     find /tmp -name "tmp*" -type f -mtime +0.04 -delete 2>/dev/null || true
     
-    echo "커스텀 핸들러 실행 중... (PID: $CUSTOM_PID)"
+    echo "모든 워커 프로세스 실행 중... (활성: $active_workers/$WORKER_PROCESSES)"
 done 

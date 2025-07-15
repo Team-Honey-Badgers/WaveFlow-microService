@@ -22,8 +22,8 @@ os.environ['LIBROSA_CACHE_DIR'] = '/tmp/librosa_cache'
 os.environ['LIBROSA_CACHE_LEVEL'] = '10'
 os.makedirs('/tmp/librosa_cache', exist_ok=True)
 
-# OpenMP 스레드 수 제한 (컨테이너 환경 최적화)
-os.environ['OMP_NUM_THREADS'] = '2'
+# OpenMP 스레드 수 최적화 (c7-large: 2 vCPU * 2 = 4 threads)
+os.environ['OMP_NUM_THREADS'] = os.environ.get('OMP_NUM_THREADS', '4')
 
 # 로깅 설정
 logging.basicConfig(
@@ -153,9 +153,18 @@ celery_app.conf.update(
     task_default_retry_delay=config.RETRY_DELAY,
     task_max_retries=config.MAX_RETRIES,
     
-    # 워커 설정 - EC2 c7i-large 최적화 (2 vCPU, 4GB RAM)
-    worker_prefetch_multiplier=1,
-    worker_max_tasks_per_child=100,  # 2개 워커로 증가했으므로 태스크 수 증가
+    # 워커 설정 - EC2 c7-large 최적화 (2 vCPU, 4GB RAM)
+    # 높은 처리량을 위한 prefetch 설정
+    worker_prefetch_multiplier=20,  # 2 vCPU * 10배로 증가
+    worker_max_tasks_per_child=200,  # 메모리 누수 방지 위해 증가
+    
+    # 동시성 최적화 설정
+    worker_concurrency=4,  # 2 vCPU * 2 = 4개 동시 처리
+    
+    # 메모리 효율성 설정
+    worker_max_memory_per_child=1024000,  # 1GB per child (4GB RAM / 4)
+    
+    # 태스크 라우팅 최적화 (기존 None 설정을 구체적 값으로 변경)
     
     # 결과 만료 설정
     result_expires=config.CELERY_RESULT_EXPIRES,
@@ -189,9 +198,9 @@ celery_app.conf.update(
     # 더 관대한 메시지 처리
     worker_lost_wait=10.0,
     
-    # 오류 처리 설정
-    task_soft_time_limit=None,
-    task_time_limit=None,
+    # 오류 처리 설정 - c7-large 최적화
+    task_soft_time_limit=3600,  # 1시간 소프트 제한
+    task_time_limit=7200,  # 2시간 하드 제한
     
     # JSON 메시지 직접 처리 허용
     task_routes={
@@ -209,7 +218,8 @@ celery_app.conf.update(
         }
     },
     
-    # Celery 5.3.4 호환성 설정
+    # Celery 5.3.4 호환성 설정 - c7-large 최적화
+    worker_pool='threads',  # I/O 집약적 작업에 최적화
     worker_pool_restarts=True,
     worker_autoscaler='celery.worker.autoscale:Autoscaler',
     
