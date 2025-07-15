@@ -126,9 +126,11 @@ import sys
 import os
 import traceback
 
+worker_id = '${worker_id}'
+
 try:
     print(f'워커 #{worker_id}: Python 스크립트 시작')
-    os.environ['WORKER_ID'] = '${worker_id}'
+    os.environ['WORKER_ID'] = worker_id
     print(f'워커 #{worker_id}: WORKER_ID 환경 변수 설정 완료')
     
     from app.celery_app import start_custom_handler
