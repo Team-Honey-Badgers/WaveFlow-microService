@@ -377,7 +377,7 @@ def mix_stems_and_upload(self, stageId: Optional[str] = None, upstreamId: Option
     Args:
         stageId: 스테이지 ID
         upstreamId: 업스트림 ID
-        stem_paths: 스템 파일 경로 리스트트
+        stem_paths: 스템 파일 경로 리스트
         
     Returns:
         dict: 처리 결과
@@ -429,10 +429,9 @@ def mix_stems_and_upload(self, stageId: Optional[str] = None, upstreamId: Option
                 if sample_rate is None:
                     sample_rate = sr
                 elif sample_rate != sr:
-                    # 샘플레이트가 다른 경우 리샘플링
-                    import librosa
-                    audio_data = librosa.resample(audio_data, orig_sr=sr, target_sr=sample_rate)
-                    logger.info(f"리샘플링 수행: {sr} -> {sample_rate}")
+                    # 샘플레이트가 다른 경우 경고 후 스킵 (임시 조치)
+                    logger.warning(f"샘플레이트 불일치로 파일 스킵: {stem_path} (기준: {sample_rate}, 현재: {sr})")
+                    continue  # 이 파일은 믹싱에서 제외
                 
                 audio_data_list.append(audio_data)
                 logger.info(f"오디오 로드 완료: {stem_path} (길이: {len(audio_data)}, SR: {sr})")
