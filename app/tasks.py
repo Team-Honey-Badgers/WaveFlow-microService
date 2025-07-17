@@ -242,7 +242,8 @@ def process_duplicate_file(self, userId: Optional[str] = None, trackId: Optional
 def process_audio_analysis(self, userId: Optional[str] = None, trackId: Optional[str] = None, 
                           stemId: Optional[str] = None, filepath: Optional[str] = None, 
                           audio_hash: Optional[str] = None, timestamp: Optional[str] = None,
-                          original_filename: Optional[str] = None, num_peaks: int = 4000):
+                          original_filename: Optional[str] = None, num_peaks: int = 4000,
+                          upstreamId: Optional[str] = None):
     """
     3단계: 오디오 분석 테스크
     오디오 파일을 분석하여 파형 데이터를 생성하고 S3에 저장
@@ -256,6 +257,7 @@ def process_audio_analysis(self, userId: Optional[str] = None, trackId: Optional
         timestamp: 타임스탬프
         original_filename: 원본 파일명
         num_peaks: 생성할 파형 피크 개수 (기본값: 4000)
+        upstreamId: 업스트림 ID (선택적)
         
     Returns:
         dict: 처리 결과
@@ -273,6 +275,7 @@ def process_audio_analysis(self, userId: Optional[str] = None, trackId: Optional
     logger.info(f"  - filepath: {filepath}")
     logger.info(f"  - audio_hash: {audio_hash}")
     logger.info(f"  - num_peaks: {num_peaks}")
+    logger.info(f"  - upstreamId: {upstreamId}")
     logger.info("=================================")
     
     try:
@@ -319,6 +322,7 @@ def process_audio_analysis(self, userId: Optional[str] = None, trackId: Optional
             'stemId': stemId,
             'userId': userId,
             'trackId': trackId,
+            'upstreamId': upstreamId,
             'status': 'SUCCESS',
             'result': {
                 'audio_data_hash': result['audio_data_hash'],

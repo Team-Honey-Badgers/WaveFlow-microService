@@ -56,6 +56,7 @@ def send_completion_webhook(stem_id: str, result: Dict[str, Any], status: str = 
         "stemId": stem_id,
         "userId": result.get('userId'),
         "trackId": result.get('trackId'),
+        "upstreamId": result.get('upstreamId'),
         "status": status,
         "result": result.get('result'),
         "timestamp": result.get('timestamp'),
