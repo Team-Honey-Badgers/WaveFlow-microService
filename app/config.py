@@ -4,34 +4,31 @@
 """
 
 import os
+
 from dotenv import load_dotenv
 
 # 환경 변수 로드
 load_dotenv()
 
-# AWS 설정
-AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
-AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
+# AWS 설정 - EC2 IAM Role 사용
 AWS_REGION = os.getenv('AWS_REGION', 'ap-northeast-2')
 
 # SQS 설정
 SQS_QUEUE_URL = os.getenv('SQS_QUEUE_URL', '')
+# 큐 이름을 직접 설정할 수 있도록 환경 변수 추가
+SQS_QUEUE_NAME = os.getenv('SQS_QUEUE_NAME', '')
 
-# S3 설정
+# S3 설정 - 하나의 버킷 사용
 S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', '')
-S3_WAVEFORM_BUCKET_NAME = os.getenv('S3_WAVEFORM_BUCKET_NAME', '')
 
 # Celery 설정
-# SQS를 브로커로 사용하는 URL 생성
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', '')
-if not CELERY_BROKER_URL and AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
-    CELERY_BROKER_URL = f'sqs://{AWS_ACCESS_KEY_ID}:{AWS_SECRET_ACCESS_KEY}@'
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'sqs://')
 
 # Result Backend 설정 - 웹훅 방식으로 처리하므로 불필요
-CELERY_RESULT_BACKEND = 'cache'  # 기본 캐시만 사용
+CELERY_RESULT_BACKEND = 'cache+memory://'
 
 # 파일 처리 설정
-ALLOWED_MIME_TYPES = os.getenv('ALLOWED_MIME_TYPES', 'audio/wav,audio/mpeg,audio/mp3,audio/flac,audio/ogg').split(',')
+ALLOWED_MIME_TYPES = os.getenv('ALLOWED_MIME_TYPES', 'audio/wav,audio/x-wav,audio/mpeg,audio/mp3,audio/flac,audio/ogg,audio/wave').split(',')
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', '100'))
 DEFAULT_WAVEFORM_PEAKS = int(os.getenv('DEFAULT_WAVEFORM_PEAKS', '1024'))
 
@@ -49,13 +46,10 @@ WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
 # 결과 저장 만료 시간 (초) - SQS 메시지 가시성 타임아웃 고려
 CELERY_RESULT_EXPIRES = int(os.getenv('CELERY_RESULT_EXPIRES', '3600'))  # 1시간
 
-# 필수 환경 변수 검증
+# 필수 환경 변수 검증 - EC2 IAM Role 사용으로 자격 증명 불필요
 REQUIRED_VARS = [
-    'AWS_ACCESS_KEY_ID',
-    'AWS_SECRET_ACCESS_KEY',
     'SQS_QUEUE_URL',
     'S3_BUCKET_NAME',
-    'S3_WAVEFORM_BUCKET_NAME',
     'WEBHOOK_URL'
 ]
 
@@ -74,12 +68,9 @@ def validate_config():
 def get_config():
     """전체 설정을 딕셔너리로 반환합니다."""
     return {
-        'AWS_ACCESS_KEY_ID': AWS_ACCESS_KEY_ID,
-        'AWS_SECRET_ACCESS_KEY': AWS_SECRET_ACCESS_KEY,
         'AWS_REGION': AWS_REGION,
         'SQS_QUEUE_URL': SQS_QUEUE_URL,
         'S3_BUCKET_NAME': S3_BUCKET_NAME,
-        'S3_WAVEFORM_BUCKET_NAME': S3_WAVEFORM_BUCKET_NAME,
         'CELERY_BROKER_URL': CELERY_BROKER_URL,
         'WEBHOOK_URL': WEBHOOK_URL,
         'ALLOWED_MIME_TYPES': ALLOWED_MIME_TYPES,
@@ -96,4 +87,20 @@ def get_result_backend_info():
         'backend_type': "Cache (웹훅 방식 사용)",
         'backend_url': CELERY_RESULT_BACKEND,
         'distributed_support': True
-    } 
+    }
+
+def get_sqs_queue_name():
+    """
+    SQS 큐 이름을 반환합니다.
+    환경 변수로 직접 설정된 경우 우선 사용하고,
+    없으면 SQS_QUEUE_URL에서 큐 이름을 추출합니다.
+    """
+    if SQS_QUEUE_NAME:
+        return SQS_QUEUE_NAME
+    
+    if SQS_QUEUE_URL:
+        parts = SQS_QUEUE_URL.split('/')
+        if len(parts) >= 2:
+            return parts[-1]  # 마지막 부분이 큐 이름
+    
+    return 'audio-processing-queue'  # 기본값 

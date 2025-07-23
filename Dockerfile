@@ -1,33 +1,4 @@
-# 멀티스테이지 빌드를 위한 프로덕션용 Dockerfile
-# 1단계: 빌드 환경
-FROM python:3.9-slim as builder
-
-# 작업 디렉토리 설정
-WORKDIR /usr/src/app
-
-# 시스템 의존성 설치 (빌드 도구들)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    gcc \
-    g++ \
-    libc6-dev \
-    libffi-dev \
-    libssl-dev \
-    libmagic1 \
-    libmagic-dev \
-    libsndfile1 \
-    libsndfile1-dev \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
-# Python 의존성 업그레이드
-RUN pip install --upgrade pip setuptools wheel
-
-# requirements.txt 복사 및 의존성 설치
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# 2단계: 프로덕션 환경
+# 단일 스테이지 빌드로 단순화
 FROM python:3.9-slim
 
 # 메타데이터 추가
@@ -38,18 +9,26 @@ LABEL description="음악 협업 플랫폼용 Python 비동기 워커 서버"
 # 작업 디렉토리 설정
 WORKDIR /usr/src/app
 
-# 시스템 의존성 설치 (런타임 필요 패키지만)
+# 시스템 의존성 설치
 RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
     libmagic1 \
+    libmagic-dev \
     libsndfile1 \
+    libsndfile1-dev \
     ffmpeg \
     curl \
+    libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# 빌드 환경에서 Python 패키지 복사
-COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Python 의존성 업그레이드
+RUN pip install --upgrade pip setuptools wheel
+
+# requirements.txt 복사 및 의존성 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 애플리케이션 소스 코드 복사
 COPY app/ ./app/
@@ -62,12 +41,17 @@ RUN chmod +x run_worker.sh run_tests.sh
 # 비권한 사용자 생성 및 전환 (보안)
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 RUN chown -R appuser:appuser /usr/src/app
+# 로그는 stdout으로 출력
 USER appuser
 
 # 환경 변수 설정
 ENV PYTHONPATH=/usr/src/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV LIBROSA_CACHE_DIR=/tmp
+ENV LIBROSA_CACHE_LEVEL=0
+ENV NUMBA_CACHE_DIR=/tmp
+ENV NUMBA_DISABLE_JIT=1
 
 # 헬스 체크 설정
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \

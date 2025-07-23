@@ -30,20 +30,17 @@ jobs:
         echo "Commit: ${{ github.sha }}"
         echo "================================"
         
-        cd /home/ubuntu/audio-processor
+        cd /home/ubuntu/microService-python
 
         echo "📥 코드 업데이트..."
         git pull origin ci-cd-test || echo "Git pull failed, continuing..."
 
-        echo "📝 환경변수 설정..."
+        echo "📝 환경변수 설정... (EC2 IAM Role 사용)"
         cat > .env << 'ENVEOF'
-        AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_REGION=${{ secrets.AWS_REGION }}
         SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
         S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
-        S3_WAVEFORM_BUCKET_NAME=${{ secrets.S3_WAVEFORM_BUCKET_NAME }}
-        CELERY_BROKER_URL=sqs://${{ secrets.AWS_ACCESS_KEY_ID }}:${{ secrets.AWS_SECRET_ACCESS_KEY }}@${{ secrets.SQS_QUEUE_URL }}
+        CELERY_BROKER_URL=sqs://
         WEBHOOK_URL=${{ secrets.WEBHOOK_URL }}
         CONCURRENCY=4
         LOG_LEVEL=INFO
@@ -69,9 +66,15 @@ jobs:
         scp -o StrictHostKeyChecking=no deploy.sh ubuntu@${{ secrets.EC2_HOST }}:/home/ubuntu/deploy.sh
         ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} "chmod +x /home/ubuntu/deploy.sh && /home/ubuntu/deploy.sh"
 
-    - name: Success Notification
+    - name: Notify Team on Success
       if: success()
       run: |
-        echo "🎉 오디오 처리 워커 배포 성공!"
-        echo "📋 Branch: ci-cd-test"
-        echo "👤 Author: ${{ github.actor }}"
+        curl -X POST -H 'Content-type: application/json' --data '{
+          "text": " 🎹 오디오 분석 서버 배포 성공일껄 ? \n 📋 Branch: `ci-cd-test`\n👤 Author: `${{ github.actor }}`\n 💡 로그 확인하고 팀원들과 내용 공유 하세요."
+        }' ${{ secrets.SLACK_WEBHOOK_URL }}
+    - name: Notify Team on Failure
+      if: failure()
+      run: |
+        curl -X POST -H 'Content-type: application/json' --data '{
+          "text": "❌ 오디오 분석 배포 실패\n📋 Branch: `ci-cd-test`\n👤 Author: `${{ github.actor }}`\n🔍 GitHub Actions에서 로그를 확인해주세요."
+        }' ${{ secrets.SLACK_WEBHOOK_URL }}
