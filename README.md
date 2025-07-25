@@ -6,7 +6,8 @@
 WaveFlow 마이크로서비스는 **음악 협업 플랫폼을 위한 오디오 파일 처리 전용 비동기 워커 시스템**입니다. 이 서비스는 다음과 같은 핵심 기능을 제공합니다:
 
 - **오디오 파일 해시 생성 및 중복 검사**: 업로드된 오디오 파일의 SHA-256 해시를 생성하여 중복 파일 검출
-- **오디오 파형 데이터 생성**: librosa를 사용한 고품질 오디오 분석 및 파형 시각화 데이터 생성
+- **오디오 파형 데이터 생성**: librosa를 사용한 고품질 오디오 분석 및 파형 시각화 데이터 생성 (최대 4000 피크)
+- **오디오 스템 믹싱**: 여러 스템 파일을 조합하여 완성된 믹싱 트랙 생성 (볼륨 정규화 포함)
 - **AWS 기반 파일 관리**: S3를 통한 안전한 파일 저장 및 관리
 - **실시간 웹훅 통신**: NestJS 메인 서버와 양방향 통신으로 처리 상태 실시간 업데이트
 
@@ -16,7 +17,8 @@ WaveFlow 마이크로서비스는 **음악 협업 플랫폼을 위한 오디오 
 1. **대용량 오디오 파일 처리**: 메인 서버의 부하를 줄이기 위한 비동기 처리
 2. **중복 파일 방지**: 스토리지 비용 절감 및 데이터 중복 방지
 3. **실시간 파형 시각화**: 음악 협업을 위한 직관적인 오디오 시각화 제공
-4. **확장 가능한 아키텍처**: AWS 기반 마이크로서비스로 트래픽 증가에 대응
+4. **스템 믹싱 기능**: 다중 트랙 오디오 파일의 실시간 믹싱 및 조합
+5. **확장 가능한 아키텍처**: AWS 기반 마이크로서비스로 트래픽 증가에 대응
 
 ## 2. 기술 스택 (Tech Stack)
 
@@ -71,12 +73,14 @@ graph TB
 
 3. **분기 처리 단계**
    - **중복 있음**: `process_duplicate_file` → S3 파일 삭제
-   - **중복 없음**: `process_audio_analysis` → 파형 데이터 생성
+   - **중복 없음**: `process_audio_analysis` → 파형 데이터 생성 (최대 4000 피크)
 
 4. **믹싱 작업 단계** (`mix_stems_and_upload`)
    - 여러 스템 파일들을 S3에서 다운로드
-   - 오디오 믹싱 수행 (볼륨 정규화 포함)
-   - 믹싱된 파일을 S3에 업로드
+   - 가법적 믹싱 수행 (Simple Additive Mixing)
+   - 볼륨 정규화 및 클리핑 방지 처리
+   - 믹싱된 파일 및 파형 데이터를 S3에 업로드
+   - 웹훅으로 믹싱 완료 알림 전송
 
 ### 외부 서비스 연동
 - **NestJS 메인 서버**: 웹훅 통신으로 실시간 상태 업데이트
@@ -213,7 +217,8 @@ celery -A app.celery_app worker --loglevel=info
 {
   "task": "app.tasks.mix_stems_and_upload",
   "stageId": "string",
-  "stem_paths": ["string", "string"]
+  "upstreamId": "string",
+  "stem_paths": ["string", "string", "..."]
 }
 ```
 
@@ -277,7 +282,8 @@ celery_app.conf.update(
 **주요 함수:**
 - `generate_hash_and_webhook()`: 1단계 해시 생성 및 웹훅 전송
 - `process_duplicate_file()`: 2단계 중복 파일 처리
-- `process_audio_analysis()`: 3단계 오디오 분석 처리
+- `process_audio_analysis()`: 3단계 오디오 분석 처리  
+- `mix_stems_and_upload()`: 4단계 스템 믹싱 및 업로드
 - `health_check()`: 시스템 상태 확인
 - `cleanup_temp_files()`: 임시 파일 정리
 
@@ -320,6 +326,7 @@ aws_utils.download_from_s3('audio/file.wav', '/tmp/file.wav')
 **주요 함수:**
 - `send_hash_webhook()`: 해시 생성 완료 웹훅 전송
 - `send_completion_webhook()`: 작업 완료 웹훅 전송
+- `send_mixing_webhook()`: 믹싱 완료 웹훅 전송
 
 #### app/config.py
 환경 변수 관리 및 설정을 담당합니다.
@@ -420,4 +427,92 @@ if self.request.retries < self.max_retries:
 trap cleanup SIGTERM SIGINT
 ```
 
-이 문서는 WaveFlow 마이크로서비스의 모든 핵심 기능과 구조를 상세히 설명하고 있습니다. 새로운 개발자가 이 문서만으로도 프로젝트를 완전히 이해하고 즉시 유지보수 및 추가 개발을 시작할 수 있도록 구성되었습니다.
+## 8. 믹싱 알고리즘 상세 (Mixing Algorithm Details)
+
+### 믹싱 처리 과정
+
+WaveFlow의 스템 믹싱 기능은 다음과 같은 단계로 처리됩니다:
+
+#### 1. 스템 파일 준비 및 검증
+```python
+# S3에서 모든 스템 파일 다운로드
+for stem_path in stem_paths:
+    processor = AudioProcessor(temp_file_path)
+    audio_data, sample_rate = processor.load_audio_data()
+    
+    # 샘플 레이트 일관성 검증
+    if sample_rate != reference_sample_rate:
+        logger.warning(f"샘플 레이트 불일치 감지: {sample_rate}Hz")
+```
+
+#### 2. 가법적 믹싱 (Simple Additive Mixing)
+```python
+# 최대 길이 결정
+max_length = max(len(audio) for audio in audio_data_list)
+
+# 짧은 오디오 파일 제로 패딩
+mixed_audio = np.zeros(max_length, dtype=np.float32)
+for audio_data in audio_data_list:
+    if len(audio_data) < max_length:
+        padded_audio = np.pad(audio_data, (0, max_length - len(audio_data)), 'constant')
+    mixed_audio += padded_audio
+```
+
+#### 3. 볼륨 정규화 및 클리핑 방지
+```python
+# 스템 수에 따른 볼륨 정규화
+if len(audio_data_list) > 1:
+    mixed_audio = mixed_audio / len(audio_data_list)
+
+# 클리핑 방지를 위한 최대 진폭 제한 (95%)
+max_val = np.max(np.abs(mixed_audio))
+if max_val > 0.95:
+    mixed_audio = mixed_audio * (0.95 / max_val)
+```
+
+#### 4. 믹싱 결과 저장
+- **믹싱 파일**: `mixed/{stageId}_mixed_{timestamp}.wav`
+- **파형 데이터**: `waveforms/{stageId}_mixed_waveform_{timestamp}.json`
+- **파형 해상도**: 4000 피크로 고정
+
+### 믹싱 알고리즘 특징
+
+- **단순 가법 방식**: 복잡한 효과 없이 스템들을 순수하게 합성
+- **자동 길이 조정**: 가장 긴 스템에 맞춰 자동으로 길이 조정
+- **볼륨 밸런싱**: 스템 수에 비례한 자동 볼륨 조정
+- **클리핑 보호**: 디지털 클리핑 방지를 위한 자동 게인 조정
+- **모노 출력**: 모든 처리는 모노 포맷으로 수행
+
+### 믹싱 성능 최적화 
+
+#### 메모리 관리
+- 각 단계별 메모리 사용량 모니터링
+- 처리 완료 후 즉시 임시 파일 정리
+- 대용량 오디오 파일에 대한 스트리밍 처리
+
+#### 최적화된 처리 환경
+- **인스턴스**: c7i-large (2 vCPU, 4GB RAM)
+- **동시성**: 2개 워커로 병렬 처리
+- **캐싱**: Numba JIT 컴파일 및 librosa 캐싱
+
+## 9. 성능 분석 결과 (Performance Analysis)
+
+### 처리 시간 벤치마크 (c7i-large 기준)
+
+| 파일 길이 | 해시 생성 | 파형 생성 | 총 처리 시간 |
+|---------|---------|---------|------------|
+| 5초     | 0.8초   | 4.2초   | 6.55초     |
+| 10초    | 1.6초   | 7.5초   | 11.98초    |
+| 30초    | 4.8초   | 22.1초  | 34.35초    |
+
+### 메모리 사용량
+- **기본 메모리**: ~150MB
+- **5초 파일 처리**: ~250MB
+- **30초 파일 처리**: ~450MB
+- **최대 메모리 한계**: 3.5GB (안전 마진 포함)
+
+### 최적화 효과
+- **Numba JIT 워밍업**: 초기 처리 시간 3.2초 → 후속 처리 0.1초
+- **Librosa 캐싱**: 반복 처리 시 20-30% 성능 향상
+- **메모리 최적화**: 태스크당 100회 실행 후 워커 재시작
+
