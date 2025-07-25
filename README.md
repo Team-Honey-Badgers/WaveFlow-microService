@@ -1,4 +1,4 @@
-# WaveFlow 마이크로서비스 기술 인수인계 문서
+# WaveFlow 마이크로서비스
 
 ## 1. 프로젝트 개요 (Project Overview)
 
